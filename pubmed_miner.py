@@ -44,6 +44,23 @@ This software is provided "as is" without warranties or guarantees of any kind.
 # Alias mapping for handling multiple author names
 ALIAS_MAPPING = {
     "Schiffelers R": "Schiffelers RM",
+    "Hofer I": "Hoefer IE",
+    "Hoefer I.E.": "Hoefer IE",
+    "Hoefer I.": "Hoefer IE",
+    "Imo E. Hofer": "Hoefer IE",
+    "Imo Hofer": "Hoefer IE",
+    "Imo E. Hoefer": "Hoefer IE",
+    "Imo E Hoefer": "Hoefer IE",
+    "Imo Hoefer": "Hoefer IE",
+    "Schoneveld AH": "Schoneveld AH",
+    "Schoneveld A.H.": "Schoneveld AH",
+    "Schoneveld A.": "Schoneveld AH",
+    "Arjen H. Schoneveld": "Schoneveld AH",
+    "Arjen H Schoneveld": "Schoneveld AH",
+    "Arjen Schoneveld": "Schoneveld AH",
+    "Hester M. den Ruijter": "den Ruijter HM",
+    "Hester M den Ruijter": "den Ruijter HM",
+    "Hester den Ruijter": "den Ruijter HM",
     "van der Laan S": "van der Laan SW",
     "van der Laan S.W.": "van der Laan SW",
     "van der Laan Sander W.": "van der Laan SW",
@@ -55,7 +72,11 @@ ALIAS_MAPPING = {
 
 # Set some defaults
 DEFAULT_ORGANIZATION = "University Medical Center Utrecht"
-DEFAULT_NAMES = ["van der Laan SW", "Pasterkamp G", "Mokry M", "Schiffelers RM", "van Solinge W", "Haitjema S"]
+DEFAULT_NAMES = ["van der Laan SW", "Pasterkamp G", "Mokry M", "Schiffelers RM", 
+"van Solinge W", "Haitjema S", "den Ruijter HM", 
+"Hoefer IE",
+"Schoneveld AH",
+"Vader P"]
 DEFAULT_DEPARTMENTS = ["Central Diagnostic Laboratory"]
 
 # Setup Logging

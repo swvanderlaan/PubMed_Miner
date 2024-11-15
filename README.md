@@ -59,18 +59,18 @@ python pubmed_miner.py --help
 
 ```
 Required arguments:
-    `-e`, `--email` <email-address>  Email address for PubMed API access.
+    -e, --email <email-address>  Email address for PubMed API access.
 
 Optional arguments:
-    `-n, `--names` <names>          List of author names to search for. 
+    -n, --names <names>          List of author names to search for. 
                                     Default: `{DEFAULT_NAMES}` with these aliases: `{ALIAS_MAPPING}`.
-    `-d`, `--departments` <depts>    List of departments to search for. Default: `{DEFAULT_DEPARTMENTS}`.
-    `-org`, `--organization` <org>   Organization name for filtering results. Default: `{DEFAULT_ORGANIZATION}`.
-    `-y`, `--year` <year>            Filter publications by year or year range (e.g., 2024 or 2017-2024).
-    `-o`, `--output-file` <file>     Output base name for the Word and Excel files. Default: date_CDL_UMCU_Publications.
-    `-r`, `--results-dir` <dir>      Directory to save results. Default: results.
-    `-v`, `--verbose`                Enable verbose output.
-    `-V`, `--version`                Show program's version number and exit.
+    -d, --departments <depts>    List of departments to search for. Default: `{DEFAULT_DEPARTMENTS}`.
+    -org, --organization <org>   Organization name for filtering results. Default: `{DEFAULT_ORGANIZATION}`.
+    -y, --year <year>            Filter publications by year or year range (e.g., 2024 or 2017-2024).
+    -o, --output-file <file>     Output base name for the Word and Excel files. Default: date_CDL_UMCU_Publications.
+    -r, --results-dir <dir>      Directory to save results. Default: results.
+    -v, --verbose                Enable verbose output.
+    -V, --version                Show program's version number and exit.
 ```
 
 ### Article Meta Viewer 
@@ -89,12 +89,12 @@ python article_meta.py --help
 
 ```
 Required arguments:
-    `-e`, `--email` <email-address>          Email address for PubMed API access.
-    `-p`, `--pubmedid` PUBMEDID    PubMed ID of the article to fetch metadata for.
+    -e, --email <email-address>          Email address for PubMed API access.
+    -p, --pubmedid PUBMEDID    PubMed ID of the article to fetch metadata for.
 
 Optional arguments:
-    `-v, --verbose`              Enable verbose output.
-    `-V, --version`              Show program's version number and exit.
+    -v, --verbose              Enable verbose output.
+    -V, --version              Show program's version number and exit.
 
 Example:
     python article_meta.py --email <email-address> --pubmedid 38698167 --verbose
