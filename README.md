@@ -1,4 +1,4 @@
-## [PubMed Miner](https://github.com/swvanderlaan/PubMed_Miner)<img align="right" height="200" src=images/FullLogo_Transparent.png>
+# [PubMed Miner](https://github.com/swvanderlaan/PubMed_Miner)<img align="right" height="200" src=images/FullLogo_Transparent.png>
 
 [![Languages](https://skillicons.dev/icons?i=py)](https://skillicons.dev) 
 
@@ -7,7 +7,7 @@ Mine PubMed for publication at the Central Diagnostics Laboratory of the Divisio
 This `pubmed_miner.py` script retrieves PubMed publications for a list of authors (and their aliases) and departments from UMC Utrecht. It then analyzes the publication data and saves the results to a Word document and an Excel file, and also produces a few graphs on the fly.
 
 
-### How to install
+## How to install
 
 To install follow these instructions. First, clone the repository to a directory of your choice:
 
@@ -41,7 +41,7 @@ And some `pip` packages:
 pip install xlsxwriter
 ```
 
-### How to use
+## How to use
 
 The script is really easy to use. You can run it from the command line. For example:
 
@@ -69,12 +69,12 @@ Optional arguments:
     `-v`, `--verbose`                Enable verbose output.
     `-V`, `--version`                Show program's version number and exit.
 
-### Acknowledgements
+## Acknowledgements
 Dr. Sander W. van der Laan is funded through EU H2020 TO_AITION (grant number: 848146), EU HORIZON NextGen (grant number: 101136962), EU HORIZON MIRACLE (grant number: 101115381), and Health~Holland PPP Allowance ‘Getting the Perfect Image’.
 
 We are thankful for the support of the Leducq Fondation ‘PlaqOmics’ and ‘AtheroGen’, and the Chan Zuckerberg Initiative ‘MetaPlaq’. The research for this contribution was made possible by the AI for Health working group of the [EWUU alliance](https://aiforhealth.ewuu.nl/). The collaborative project ‘Getting the Perfect Image’ was co-financed through use of PPP Allowance awarded by Health~Holland, Top Sector Life Sciences & Health, to stimulate public-private partnerships.
 
-### Disclosures
+## Disclosures
 Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 
 #### Changes log
@@ -103,4 +103,4 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 --------------
 
 #### MIT License
-##### <a href='https://www.umcutrecht.nl/en/centraal-diagnostisch-laboratorium'><img src='images/UMCU_2019_logo_liggend_rgb.png' align="center" height="45" /></a> Copyright (c) 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.
+##### Copyright (c) 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.
