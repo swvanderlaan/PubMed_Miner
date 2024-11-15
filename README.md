@@ -79,7 +79,7 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 
 #### Changes log
     
-    _Version:_      v1.0.3</br>
+    _Version:_      v1.0.5</br>
     _Last update:_  2024-11-15</br>
     _Written by:_   Sander W. van der Laan (s.w.vanderlaan-2[at]umcutrecht.nl).
     
@@ -94,6 +94,8 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
     _W_
 
     **Changes log**
+    * v1.0.5, 2024-11-15: Fixed an issue where the logo was not properly referenced.
+    * v1.0.4, 2024-11-15: Added logo to Word document header.
     * v1.0.3, 2024-11-15: Expanded Word-document information.
     * v1.0.2, 2024-11-15: Added retry logic for PubMed API, better logging for aliases, results directory customization, improved input validation, enhanced plotting, and bar annotations.
     * v1.0.1, 2024-11-15: Added alias handling for authors, improved deduplication of YearCount and PubTypeYearCount in Excel, added Authors column.
