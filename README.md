@@ -115,9 +115,9 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 
 #### Changes log
     
-    _Version:_      v1.0.6</br>
+    _Version:_      v1.0.7</br>
     _Last update:_  2024-11-15</br>
-    _Written by:_   Sander W. van der Laan (s.w.vanderlaan-2[at]umcutrecht.nl).
+    _Written by:_   Sander W. van der Laan (s.w.vanderlaan [at] gmail [dot] com).
     
     **MoSCoW To-Do List**
     The things we Must, Should, Could, and Would have given the time we have.
@@ -130,6 +130,7 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
     _W_
 
     **Changes log**
+    * v1.0.7, 2024-11-15: Fixed an issue where the plot for total_publications_preprints_by_author was not displaying the years correctly.
     * v1.0.6, 2024-11-15: Added top 10 journals plot. Fixed issue with JID extraction. Fixed issue with open access extraction. Added more logging. Added --debug flag. 
     * v1.0.5, 2024-11-15: Fixed an issue where the logo was not properly referenced.
     * v1.0.4, 2024-11-15: Added logo to Word document header.

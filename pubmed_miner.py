@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 # Change log:
+# * v1.0.7, 2024-11-15: Fixed an issue where the plot for total_publications_preprints_by_author was not displaying the years correctly.
 # * v1.0.6, 2024-11-15: Added top 10 journals plot. Fixed issue with JID extraction. Fixed issue with open access extraction. Added more logging. Added --debug flag. 
 # * v1.0.5, 2024-11-15: Fixed an issue where the logo was not properly referenced.
 # * v1.0.4, 2024-11-15: Added logo to Word document header.
@@ -28,7 +29,7 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.0.6'
+VERSION = '1.0.7'
 VERSION_DATE = '2024-11-15'
 COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
@@ -44,6 +45,13 @@ This software is provided "as is" without warranties or guarantees of any kind.
 # Alias mapping for handling multiple author names
 ALIAS_MAPPING = {
     "Schiffelers R": "Schiffelers RM",
+    "Raymond M. Schiffelers": "Schiffelers RM",
+    "Raymond Schiffelers": "Schiffelers RM",
+    "R. Schiffelers": "Schiffelers RM",
+    "R Schiffelers": "Schiffelers RM",
+    "Raymond M Schiffelers": "Schiffelers RM",
+    "Gerard Pasterkamp": "Pasterkamp G",
+    "Michal Mokry": "Mokry M",
     "Hofer I": "Hoefer IE",
     "Hoefer I.E.": "Hoefer IE",
     "Hoefer I.": "Hoefer IE",
@@ -58,6 +66,8 @@ ALIAS_MAPPING = {
     "Arjen H. Schoneveld": "Schoneveld AH",
     "Arjen H Schoneveld": "Schoneveld AH",
     "Arjen Schoneveld": "Schoneveld AH",
+    "P. Vader": "Vader P",
+    "Pieter Vader": "Vader P",
     "Hester M. den Ruijter": "den Ruijter HM",
     "Hester M den Ruijter": "den Ruijter HM",
     "Hester den Ruijter": "den Ruijter HM",
@@ -65,8 +75,12 @@ ALIAS_MAPPING = {
     "van der Laan S.W.": "van der Laan SW",
     "van der Laan Sander W.": "van der Laan SW",
     "Sander W. van der Laan": "van der Laan SW",
+    "Sander van der Laan": "van der Laan SW",
+    "Sander W van der Laan": "van der Laan SW",
     "van Solinge WW": "van Solinge W",
     "van Solinge W.W.": "van Solinge W",
+    "Wouter W. van Solinge": "van Solinge W",
+    "Wouter van Solinge": "van Solinge W",
     # Add other aliases as needed
 }
 
@@ -687,29 +701,47 @@ def plot_results(author_data, results_dir, logger):
     fig, axes = plt.subplots(1, 2, figsize=(16, 7), sharey=True)
     access_types = ["open access", "closed access"]
 
+    # Gather all unique years across both panels
+    all_years = sorted(set(
+        int(pub[2])  # Extract the year
+        for _, (publications, preprints, _, _, _, _, _) in author_data.items()
+        for pub in publications + preprints
+    ))
+
+    # Width of bars for each author in a grouped bar chart
+    bar_width = 0.8 / len(author_data)  # Divide the total width by the number of authors
+
     # Process data for plotting
     for idx, access_type in enumerate(access_types):
         ax = axes[idx]
-        for canonical_author, (publications, preprints, _, _, _, _, _) in author_data.items():
+        for author_idx, (canonical_author, (publications, preprints, _, _, _, _, _)) in enumerate(author_data.items()):
             yearly_totals = defaultdict(int)
             for pub in publications + preprints:
                 pub_access_type = pub[-1]  # Access type is the last field
                 year = int(pub[2])  # Year is the third field
                 if pub_access_type == access_type:
                     yearly_totals[year] += 1
-            years = sorted(yearly_totals.keys())
-            counts = [yearly_totals[year] for year in years]
+            
+            # Compute bar positions for the author within each year
+            positions = [x + author_idx * bar_width for x in range(len(all_years))]
+            counts = [yearly_totals.get(year, 0) for year in all_years]  # Ensure all years are represented
+            
+            # Plot the bars for the current author
             ax.bar(
-                years,
+                positions,
                 counts,
+                bar_width,
                 label=canonical_author,
                 color=color_map[canonical_author],
                 alpha=0.8,
             )
+        
+        # Configure the x-axis
         ax.set_title(f"Total Publications ({access_type.capitalize()})")
         ax.set_xlabel("Year")
-        ax.set_xticks(years)
-        ax.set_xticklabels(years, rotation=45)
+        ax.set_xticks([x + (bar_width * len(author_data)) / 2 for x in range(len(all_years))])  # Center ticks for years
+        ax.set_xticklabels(all_years, rotation=45)  # Use unified years across panels
+        
         if idx == 0:
             ax.set_ylabel("Total Publications and Preprints")
         ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
