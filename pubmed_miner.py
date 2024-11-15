@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 # Change log:
+# * v1.0.8, 2024-11-15: Fixed issue with aliases for departments. Also edit option to include more departments to search for. Fixed handling authors. Fixed output of preprint citation. 
 # * v1.0.7, 2024-11-15: Fixed an issue where the plot for total_publications_preprints_by_author was not displaying the years correctly.
 # * v1.0.6, 2024-11-15: Added top 10 journals plot. Fixed issue with JID extraction. Fixed issue with open access extraction. Added more logging. Added --debug flag. 
 # * v1.0.5, 2024-11-15: Fixed an issue where the logo was not properly referenced.
@@ -29,7 +30,7 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.0.7'
+VERSION = '1.0.8'
 VERSION_DATE = '2024-11-15'
 COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
@@ -44,50 +45,95 @@ This software is provided "as is" without warranties or guarantees of any kind.
 
 # Alias mapping for handling multiple author names
 ALIAS_MAPPING = {
-    "Schiffelers R": "Schiffelers RM",
-    "Raymond M. Schiffelers": "Schiffelers RM",
-    "Raymond Schiffelers": "Schiffelers RM",
-    "R. Schiffelers": "Schiffelers RM",
-    "R Schiffelers": "Schiffelers RM",
-    "Raymond M Schiffelers": "Schiffelers RM",
-    "Gerard Pasterkamp": "Pasterkamp G",
-    "Michal Mokry": "Mokry M",
-    "Hofer I": "Hoefer IE",
-    "Hoefer I.E.": "Hoefer IE",
-    "Hoefer I.": "Hoefer IE",
-    "Imo E. Hofer": "Hoefer IE",
-    "Imo Hofer": "Hoefer IE",
-    "Imo E. Hoefer": "Hoefer IE",
-    "Imo E Hoefer": "Hoefer IE",
-    "Imo Hoefer": "Hoefer IE",
-    "Schoneveld AH": "Schoneveld AH",
-    "Schoneveld A.H.": "Schoneveld AH",
-    "Schoneveld A.": "Schoneveld AH",
-    "Arjen H. Schoneveld": "Schoneveld AH",
-    "Arjen H Schoneveld": "Schoneveld AH",
-    "Arjen Schoneveld": "Schoneveld AH",
-    "P. Vader": "Vader P",
-    "Pieter Vader": "Vader P",
-    "Hester M. den Ruijter": "den Ruijter HM",
-    "Hester M den Ruijter": "den Ruijter HM",
-    "Hester den Ruijter": "den Ruijter HM",
-    "van der Laan S": "van der Laan SW",
-    "van der Laan S.W.": "van der Laan SW",
-    "van der Laan Sander W.": "van der Laan SW",
-    "Sander W. van der Laan": "van der Laan SW",
-    "Sander van der Laan": "van der Laan SW",
-    "Sander W van der Laan": "van der Laan SW",
-    "van Solinge WW": "van Solinge W",
-    "van Solinge W.W.": "van Solinge W",
-    "Wouter W. van Solinge": "van Solinge W",
-    "Wouter van Solinge": "van Solinge W",
+    "van der Laan SW": [
+        "van der Laan S", 
+        "van der Laan S.W.", 
+        "van der Laan Sander W.", 
+        "Sander W. van der Laan", 
+        "Sander van der Laan", 
+        "Sander W van der Laan"
+    ],
+    "Pasterkamp G": [
+        "Gerard Pasterkamp"
+    ],
+    "Mokry M": [
+        "Michal Mokry"
+    ],
+    "Schiffelers RM": [
+        "Schiffelers R", 
+        "Raymond M. Schiffelers", 
+        "Raymond Schiffelers", 
+        "R. Schiffelers", 
+        "R Schiffelers", 
+        "Raymond M Schiffelers"
+    ],
+    "van Solinge W": [
+        "van Solinge WW", 
+        "van Solinge W.W.", 
+        "Wouter W. van Solinge", 
+        "Wouter van Solinge"
+    ],
+    "Haitjema S": [
+        "Haitjema S.",
+        "Saskia Haitjema",
+        "S. Haitjema",
+        "S Haitjema",
+    ],
+    "den Ruijter HM": [
+        "Hester M. den Ruijter", 
+        "Hester M den Ruijter", 
+        "Hester den Ruijter"
+    ],
+    "Hoefer IE": [
+        "Hofer I", 
+        "Hoefer I.E.", 
+        "Hoefer I.", 
+        "Imo E. Hofer", 
+        "Imo Hofer", 
+        "Imo E. Hoefer", 
+        "Imo E Hoefer", 
+        "Imo Hoefer"
+    ],
+    "Schoneveld AH": [
+        "Schoneveld A.H.", 
+        "Schoneveld A.", 
+        "Arjen H. Schoneveld", 
+        "Arjen H Schoneveld", 
+        "Arjen Schoneveld"
+    ],
+    "Vader P": [
+        "P. Vader", 
+        "Pieter Vader"
+    ],
     # Add other aliases as needed
 }
 
+# Departement mapping for handling multiple department names
+DEPARTMENT_ALIAS_MAPPING = {
+    "Central Diagnostic Laboratory": [
+        "CDL",
+        "CDL Research",
+        "Central Diagnostics Laboratory",
+        # Add other aliases as needed
+    ],
+    # Add other departments as needed
+    # "Laboratory of Experimental Cardiology": [
+    #     "Lab of Experimental Cardiology",
+    #     "Experimental Cardiology",
+    #     "Experimental Cardiology Lab",
+    #     "Experimental Cardiology Laboratory",
+    #     # Add other aliases as needed
+    # ]
+}
 # Set some defaults
 DEFAULT_ORGANIZATION = "University Medical Center Utrecht"
-DEFAULT_NAMES = ["van der Laan SW", "Pasterkamp G", "Mokry M", "Schiffelers RM", 
-"van Solinge W", "Haitjema S", "den Ruijter HM", 
+DEFAULT_NAMES = ["van der Laan SW", 
+"Pasterkamp G", 
+"Mokry M", 
+"Schiffelers RM", 
+"van Solinge W", 
+"Haitjema S", 
+"den Ruijter HM", 
 "Hoefer IE",
 "Schoneveld AH",
 "Vader P"]
@@ -178,9 +224,9 @@ Required arguments:
     -e, --email <email-address>  Email address for PubMed API access.
 
 Optional arguments:
-    -n, --names <names>          List of author names to search for. 
-                                    Default: {DEFAULT_NAMES} with these aliases: {ALIAS_MAPPING}.
-    -dep, --departments <depts>    List of departments to search for. Default: {DEFAULT_DEPARTMENTS}.
+    -n, --names <names>          List of (main) author names to search for. 
+                                 Default: {DEFAULT_NAMES} with these aliases: {ALIAS_MAPPING}.
+    -dep, --departments <depts>  List of departments to search for. Default: {DEFAULT_DEPARTMENTS}.
     -org, --organization <org>   Organization name for filtering results. Default: {DEFAULT_ORGANIZATION}.
     -y, --year <year>            Filter publications by year or year range (e.g., 2024 or 2017-2024).
     -o, --output-file <file>     Output base name for the Word and Excel files. Default: date_CDL_UMCU_Publications.
@@ -195,7 +241,7 @@ Example:
 {COPYRIGHT_TEXT}""",
         formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("-e", "--email", required=True, help="Email for PubMed API access.")
-    parser.add_argument("-n", "--names", nargs='+', default=DEFAULT_NAMES, help="List of author names to search for.")
+    parser.add_argument("-n", "--names", nargs='+', default=DEFAULT_NAMES, help="List of (main) author names to search for.")
     parser.add_argument("-dep", "--departments", nargs='+', default=DEFAULT_DEPARTMENTS, help="List of departments to search for.")
     parser.add_argument("-org", "--organization", default=DEFAULT_ORGANIZATION, help="Organization name for filtering results.")
     parser.add_argument("-y", "--year", help="Filter publications by year or year range (e.g., 2024 or 2017-2024).")
@@ -206,12 +252,28 @@ Example:
     parser.add_argument('-V', '--version', action='version', version=f'{VERSION_NAME} {VERSION} ({VERSION_DATE})')
     return parser.parse_args()
 
+# Get canonical author name
+def get_canonical_author(author, logger=None):
+    """
+    Get the canonical author name from the ALIAS_MAPPING.
+    """
+    for canonical, aliases in ALIAS_MAPPING.items():
+        if logger:
+            logger.debug(f"Checking aliases for '{canonical}': {aliases}")
+        if author in aliases or author == canonical:
+            if logger:
+                logger.info(f"Matched '{author}' to canonical author '{canonical}'.")
+            return canonical
+    if logger:
+        logger.warning(f"No match found for author '{author}'. Returning as is.")
+    return author
+
 # Fetch publication detailss
 def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, end_year=None):
     """
     Fetch detailed information for each PubMed ID, filter by year, and identify preprints.
     """
-    canonical_author = ALIAS_MAPPING.get(main_author, main_author)
+    canonical_author = get_canonical_author(main_author, logger)
     publications = []
     preprints = []
 
@@ -237,11 +299,10 @@ def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, 
             continue  # Skip this ID if all retries failed
 
         # Extract publication details
-        authors = re.findall(r"AU  - (.+)", record)
-        authors = [ALIAS_MAPPING.get(author, author) for author in authors]  # Replace aliases with canonical names
+        authors = re.findall(r"AU  - (.+)", record) or []
+        authors = [get_canonical_author(author) for author in authors]  # Replace aliases with canonical names
         title = re.search(r"TI  - (.+)", record).group(1) if re.search(r"TI  - (.+)", record) else "No title found"
         journal_abbr = re.search(r"TA  - (.+)", record).group(1) if re.search(r"TA  - (.+)", record) else "No journal abbreviation found"
-        # journal_id = re.search(r"JID  - (.+)", record).group(1) if re.search(r"JID  - (.+)", record) else "No journal ID"
         # Extract Journal ID with debugging print
         jid_match = re.search(r"JID\s*-\s*(\d+)", record)
         if jid_match:
@@ -261,6 +322,8 @@ def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, 
         # Extract UOF (Update of) field
         uof_match = re.search(r"UOF\s*-\s*(.+)", record)
         uof = uof_match.group(1) if uof_match else "No UOF"
+        # Remove "PMID:" from the uof field, if it exists
+        uof = uof.replace("PMID:", "").strip()
 
         # Determine publication type based on PT and SO
         publication_type = "Other"
@@ -298,13 +361,30 @@ def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, 
         if any(preprint_source in uof for preprint_source in ["medRxiv", "bioRxiv", "arXiv"]):
             logger.info(f"PMID {pub_id} references a preprint ({uof}). Adding to preprints.")
             uof_parts = uof.split()
+            uof_doi = None
             for part in uof_parts:
                 if part.startswith("10."):
                     uof_doi = f"https://doi.org/{part}"
                     break
             uof_citation = " ".join(uof_parts[:uof_parts.index(part)]) if uof_doi else uof
-            preprints.append((pub_id, canonical_author if canonical_author in authors else f"{canonical_author} et al.", pub_date, journal_abbr, journal_id, title, uof_doi, uof_citation, publication_type))
 
+            # Remove "doi:" from the uof_citation if present
+            if "doi:" in uof_citation.lower():
+                uof_citation = re.sub(r"\bdoi:\b", "", uof_citation, flags=re.IGNORECASE).strip()
+
+            preprints.append(
+                (
+                    pub_id,
+                    canonical_author if canonical_author in authors else f"{canonical_author} et al.",
+                    pub_date,
+                    journal_abbr,
+                    journal_id,
+                    title,
+                    uof_doi,
+                    uof_citation,
+                    publication_type,
+                )
+            )
         # Separate preprints
         if "Preprint" in pub_type:
             preprints.append((pub_id, canonical_author if canonical_author in authors else f"{canonical_author} et al.", pub_date, journal_abbr, journal_id, title, doi_link, source, publication_type, access_type))
@@ -328,12 +408,12 @@ def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, 
     return publications, preprints
 
 # Analyze publication data
-def analyze_publications(publications_data, main_author):
+def analyze_publications(publications_data, main_author, logger):
     """
     Analyze the publication data and return counts for authors, years, and journals.
     Also return counts of publications by author per year and by year per journal.
     """
-    canonical_author = ALIAS_MAPPING.get(main_author, main_author)
+    canonical_author = get_canonical_author(main_author, logger)
     author_count = defaultdict(int)
     year_count = defaultdict(int)
     author_year_count = defaultdict(lambda: defaultdict(int))
@@ -376,7 +456,7 @@ def write_to_excel(author_data, output_file, results_dir, logger):
     logger.info("> Combining all publications into a single DataFrame.")
     publications_data = []
     for main_author, (publications, preprints, author_count, year_count, author_year_count, year_journal_count, pub_type_count) in author_data.items():
-        canonical_author = ALIAS_MAPPING.get(main_author, main_author)
+        canonical_author = get_canonical_author(main_author, logger)
         for pub in publications:
             publications_data.append(list(pub) + [canonical_author])
     logger.debug(f"Publications data: {publications_data[:3]}")  # Log first 3 publications
@@ -409,13 +489,13 @@ def write_to_excel(author_data, output_file, results_dir, logger):
     logger.info("> Combining all preprints into a single DataFrame with deduplication.")
     preprints_data = []
     for main_author, (publications, preprints, author_count, year_count, author_year_count, year_journal_count, pub_type_count) in author_data.items():
-        canonical_author = ALIAS_MAPPING.get(main_author, main_author)
+        canonical_author = get_canonical_author(main_author, logger)
         for preprint in preprints:
             preprints_data.append(list(preprint) + [canonical_author])
     logger.debug(f"Preprints data: {preprints_data[:3]}")  # Log first 3 preprints
     preprints_df = pd.DataFrame(
         preprints_data,
-        columns=["PubMed ID", "Author", "Year", "Journal", "JID", "Title", "DOI Link", "Citation", "Publication Type", "Access Type", "Main Author"]
+        columns=["PubMed ID", "Author", "Year", "Journal", "JID", "Title", "DOI Link", "Citation", "Publication Type", "Main Author"]
     )
 
     # Deduplicate based on PubMed ID and combine authors for duplicates in preprints
@@ -441,7 +521,7 @@ def write_to_excel(author_data, output_file, results_dir, logger):
     logger.info("> Combining author counts.")
     author_counts = []
     for main_author, (publications, preprints, author_count, year_count, author_year_count, year_journal_count, pub_type_count) in author_data.items():
-        canonical_author = ALIAS_MAPPING.get(main_author, main_author)
+        canonical_author = get_canonical_author(main_author, logger)
         for author, count in author_count.items():
             author_counts.append([author, count, canonical_author])
     author_counts_df = pd.DataFrame(author_counts, columns=["Author", "Number of Publications", "Main Author"])
@@ -452,7 +532,7 @@ def write_to_excel(author_data, output_file, results_dir, logger):
     logger.info("> Combining and deduplicating year counts.")
     year_counts = []
     for main_author, (publications, preprints, author_count, year_count, author_year_count, year_journal_count, pub_type_count) in author_data.items():
-        canonical_author = ALIAS_MAPPING.get(main_author, main_author)
+        canonical_author = get_canonical_author(main_author, logger)
         for year, count in year_count.items():
             year_counts.append([year, count, canonical_author])
     year_counts_df = pd.DataFrame(year_counts, columns=["Year", "Number of Publications", "Authors"])
@@ -473,7 +553,7 @@ def write_to_excel(author_data, output_file, results_dir, logger):
     logger.info("> Combining and deduplicating publication type by year counts.")
     pub_type_year_counts = []
     for main_author, (publications, preprints, author_count, year_count, author_year_count, year_journal_count, pub_type_count) in author_data.items():
-        canonical_author = ALIAS_MAPPING.get(main_author, main_author)
+        canonical_author = get_canonical_author(main_author, logger)
         for pub_type, years in pub_type_count.items():
             for year, count in years.items():
                 pub_type_year_counts.append([pub_type, year, count, canonical_author])
@@ -907,7 +987,7 @@ def main():
     logger.info(f"  - authors: {args.names}")
     logger.info(f"  - department(s): {args.departments}")
     logger.info(f"  - organization: ['{args.organization}']")
-    logger.info(f"  - filtering by year (range) [{args.year}]" if args.year else "No year filter used.")
+    logger.info(f"  - filtering by year (range) [{args.year}]" if args.year else "  - no year filter used.")
     logger.info(f"  - output file(s): [{output_file}]")
     logger.info(f"> PubMed email used: {args.email}.")
     logger.info(f"> Debug mode: {'On' if args.debug else 'Off'}.")
@@ -917,20 +997,27 @@ def main():
     logger.info(f"Querying PubMed for publications and preprints.\n")
 
     for main_author in args.names:
-        canonical_author = ALIAS_MAPPING.get(main_author, main_author)
+        canonical_author = get_canonical_author(main_author, logger)
+        logger.info(f"Searching PubMed for canonical author '{canonical_author}' with aliases: {ALIAS_MAPPING.get(canonical_author, [])}")
+
         all_pubmed_ids = []
         for department in args.departments:
-            search_query = f"{main_author} {department} {args.organization}"
-            logger.info(f"Querying PubMed for [ {search_query} ]\n")
-            try:
-                record = fetch_with_retry(db="pubmed", term=search_query)
-                all_pubmed_ids.extend(record["IdList"])
-            except Exception as e:
-                logger.error(f"Failed to fetch PubMed IDs for query [{search_query}]: {e}")
-                continue
+            # Use aliases for departments
+            department_aliases = DEPARTMENT_ALIAS_MAPPING.get(department, [department])  # Get aliases or use the original
+            
+            # Iterate through all aliases for the department
+            for dept_alias in department_aliases:
+                search_query = f"{main_author} {dept_alias} {args.organization}"
+                logger.info(f"Querying PubMed for [ {search_query} ]\n")
+                try:
+                    record = fetch_with_retry(db="pubmed", term=search_query)
+                    all_pubmed_ids.extend(record["IdList"])
+                except Exception as e:
+                    logger.error(f"Failed to fetch PubMed IDs for query [{search_query}]: {e}")
+                    continue
 
         publications, preprints = fetch_publication_details(all_pubmed_ids, logger, canonical_author, start_year, end_year)
-        author_count, year_count, author_year_count, year_journal_count, pub_type_count = analyze_publications(publications, canonical_author)
+        author_count, year_count, author_year_count, year_journal_count, pub_type_count = analyze_publications(publications, canonical_author, logger)
         author_data[canonical_author] = (publications, preprints, author_count, year_count, author_year_count, year_journal_count, pub_type_count)
 
         logger.info(f"Found {len(publications)} publications and {len(preprints)} preprints for [{canonical_author}].\n")
