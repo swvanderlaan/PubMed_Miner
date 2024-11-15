@@ -1,6 +1,8 @@
 # [PubMed Miner](https://github.com/swvanderlaan/PubMed_Miner) <img align="right" height="175" src=images/FullLogo_Transparent.png>
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/downloads/release/python-390/)
+<!-- [![Languages](https://skillicons.dev/icons?i=py)](https://skillicons.dev) -->
 
-#### [![Languages](https://skillicons.dev/icons?i=py)](https://skillicons.dev)
+<!-- #### [![Languages](https://skillicons.dev/icons?i=py)](https://skillicons.dev) -->
 
 > *Pubmed Miner* Mine PubMed for publication at the _Central Diagnostics Laboratory_ of the _Division Laboratories, Pharmacy and Biomedical genetics_ at the _University Medical Center Utrecht_, _Utrecht University_, Utrecht, The Netherlands.
 
