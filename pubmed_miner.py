@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 # Change log:
+# * v1.0.9, 2024-11-15: Fixed an issue with the dimensions of the preprint and publication tables.
 # * v1.0.8, 2024-11-15: Fixed issue with aliases for departments. Also edit option to include more departments to search for. Fixed handling authors. Fixed output of preprint citation. 
 # * v1.0.7, 2024-11-15: Fixed an issue where the plot for total_publications_preprints_by_author was not displaying the years correctly.
 # * v1.0.6, 2024-11-15: Added top 10 journals plot. Fixed issue with JID extraction. Fixed issue with open access extraction. Added more logging. Added --debug flag. 
@@ -30,7 +31,7 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.0.8'
+VERSION = '1.0.9'
 VERSION_DATE = '2024-11-15'
 COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
@@ -387,7 +388,7 @@ def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, 
             )
         # Separate preprints
         if "Preprint" in pub_type:
-            preprints.append((pub_id, canonical_author if canonical_author in authors else f"{canonical_author} et al.", pub_date, journal_abbr, journal_id, title, doi_link, source, publication_type, access_type))
+            preprints.append((pub_id, canonical_author if canonical_author in authors else f"{canonical_author} et al.", pub_date, journal_abbr, journal_id, title, doi_link, source, publication_type))
         else:
             publications.append((pub_id, canonical_author if canonical_author in authors else f"{canonical_author} et al.", pub_date, journal_abbr, journal_id, title, doi_link, source, publication_type, access_type))
         # debug
@@ -403,7 +404,7 @@ def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, 
         logger.debug(f"Access Type: {access_type}")
         logger.debug(f"UOF: {uof}")
         # debug - this produces a lot of output
-        logger.debug(f"This was the full record:\n{record}")
+        # logger.debug(f"This was the full record:\n{record}")
 
     return publications, preprints
 
