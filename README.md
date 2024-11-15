@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/downloads/release/python-390/)
 
-**Pubmed Miner** _Mine PubMed for publication at the Central Diagnostics Laboratory of the _Division Laboratories, Pharmacy and Biomedical genetics at the University Medical Center Utrecht, Utrecht University, Utrecht, The Netherlands._
+**Pubmed Miner** _Mine PubMed for publication at the Central Diagnostics Laboratory of the Division Laboratories, Pharmacy and Biomedical genetics at the University Medical Center Utrecht, Utrecht University, Utrecht, The Netherlands._
 
 With `pubmed_miner.py` you can retrieve PubMed publications for a list of authors (and their aliases) and departments from UMC Utrecht. It then analyzes the publication data and saves the results to a Word document and an Excel file, and also produces a few graphs on the fly.
 
