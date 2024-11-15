@@ -1,4 +1,4 @@
-# [PubMed Miner](https://github.com/swvanderlaan/PubMed_Miner) <img align="right" height="175" src=images/IconOnly_Transparent.png>
+# [PubMed Miner](https://github.com/swvanderlaan/PubMed_Miner) <img align="right" height="175" src=images/FullLogo_Transparent.png>
 [![Languages](https://skillicons.dev/icons?i=py)](https://skillicons.dev)
 
 > *Pubmed Miner* Mine PubMed for publication at the _Central Diagnostics Laboratory_ of the _Division Laboratories, Pharmacy and Biomedical genetics_ at the _University Medical Center Utrecht_, _Utrecht University_, Utrecht, The Netherlands.
@@ -101,5 +101,5 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 
 --------------
 
-#### MIT License
+#### Creative Commons BY-NC-ND 4.0 [![License: CC BY-NC-ND 4.0](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
 ##### Copyright (c) 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.

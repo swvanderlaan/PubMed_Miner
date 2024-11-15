@@ -12,11 +12,13 @@ from Bio import Entrez
 from collections import defaultdict
 from docx import Document
 from docx.shared import Inches
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 # Change log:
+# * v1.0.4, 2024-11-15: Added logo to Word document header.
 # * v1.0.3, 2024-11-15: Expanded Word-document information.
 # * v1.0.2, 2024-11-15: Added retry logic for PubMed API, better logging for aliases, results directory customization, improved input validation, enhanced plotting, and bar annotations.
 # * v1.0.1, 2024-11-15: Added alias handling for authors, improved deduplication of YearCount and PubTypeYearCount in Excel, added Authors column.
@@ -24,28 +26,17 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.0.3'
+VERSION = '1.0.4'
 VERSION_DATE = '2024-11-15'
 COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
-The MIT License (MIT).
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and 
-associated documentation files (the "Software"), to deal in the Software without restriction, 
-including without limitation the rights to use, copy, modify, merge, publish, distribute, 
-sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is 
-furnished to do so, subject to the following conditions:
+Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International Public License
 
-The above copyright notice and this permission notice shall be included in all copies 
-or substantial portions of the Software.
+By exercising the Licensed Rights (defined below), You accept and agree to be bound by the terms and conditions of this Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International Public License ("Public License"). To the extent this Public License may be interpreted as a contract, You are granted the Licensed Rights in consideration of Your acceptance of these terms and conditions, and the Licensor grants You such rights in consideration of benefits the Licensor receives from making the Licensed Material available under these terms and conditions.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
-INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
-PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS 
-BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
-OR OTHER DEALINGS IN THE SOFTWARE.
+Full license text available at https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode.
 
-Reference: http://opensource.org.
+This software is provided "as is" without warranties or guarantees of any kind.
 '''
 
 # Alias mapping for handling multiple author names
@@ -433,24 +424,37 @@ def write_to_word(author_data, output_file, results_dir, logger, args):
     query_quarter = (datetime.now().month - 1) // 3 + 1
     document = Document()
 
+    # Add a header for the logo
+    section = document.sections[0]
+    header = section.header
+    header_paragraph = header.paragraphs[0]
+
+    # Add the logo to the header
+    logo_path = "FullLogo_Transparent.png"  # Update this path as needed
+    try:
+        header_paragraph.add_run().add_picture(logo_path, width=Inches(1.5))  # Adjust size as needed
+        header_paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
+    except Exception as e:
+        logger.error(f"Could not add logo to Word document: {e}")
+
     document.add_heading(f"Publications for {query_quarter} at the Central Diagnostics Laboratory", level=1)
-    document.add_paragraph(f"This document summarizes the publications linked to the Central Diagnostics Laboratory (CDL) at the University Medical Center Utrecht (UMCU).\n")
+    document.add_paragraph(f"This document summarizes the publications linked to the Central Diagnostics Laboratory (CDL) at the University Medical Center Utrecht (UMCU).")
     document.add_paragraph()
     document.add_paragraph(f"The following settings are used:")
     document.add_paragraph(f"* Query date: {query_date}.")
-    document.add_paragraph(f"* Authors: {', '.join(author_data.keys())}.\n")
-    document.add_paragraph(f"* Aliases used: {', '.join(ALIAS_MAPPING.keys())}.\n")
-    document.add_paragraph(f"* Year range: {args.year}.\n" if args.year else "No year filter used.\n")
-    document.add_paragraph(f"* Department(s): {', '.join(DEFAULT_DEPARTMENTS)}.\n")
+    document.add_paragraph(f"* Authors: {', '.join(author_data.keys())}.")
+    document.add_paragraph(f"* Aliases used: {', '.join(ALIAS_MAPPING.keys())}.")
+    document.add_paragraph(f"* Year range: {args.year}.\n" if args.year else "No year filter used.")
+    document.add_paragraph(f"* Department(s): {', '.join(DEFAULT_DEPARTMENTS)}.")
     document.add_paragraph(f"* Organization: {DEFAULT_ORGANIZATION}.\n")
     document.add_paragraph()
-    document.add_paragraph(f"Results saved on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.\n")
-    document.add_paragraph(f"Log file saved to {os.path.join(results_dir, f'{query_date}_CDL_UMCU_Publications.log')}.\n")
+    document.add_paragraph(f"Results saved on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.")
+    document.add_paragraph(f"Log file saved to {os.path.join(results_dir, f'{query_date}_CDL_UMCU_Publications.log')}.")
     document.add_paragraph()
-    document.add_paragraph(f"{VERSION_NAME} v{VERSION} ({VERSION_DATE}).\n")
-    document.add_paragraph(f"{COPYRIGHT}.\n")
+    document.add_paragraph(f"{VERSION_NAME} v{VERSION} ({VERSION_DATE}).")
+    document.add_paragraph(f"{COPYRIGHT}\n")
     document.add_paragraph()
-    document.add_paragraph(f"GitHub repository: https://github.com/swvanderlaan/PubMed_Miner. Any issues or requests? Create one here: https://github.com/swvanderlaan/PubMed_Miner/issues.\n")
+    document.add_paragraph(f"GitHub repository: https://github.com/swvanderlaan/PubMed_Miner. \nAny issues or requests? Create one here: https://github.com/swvanderlaan/PubMed_Miner/issues.")
 
     # Add results for each canonical author
     logger.info(f"> Adding results for {len(author_data)} author(s).")
