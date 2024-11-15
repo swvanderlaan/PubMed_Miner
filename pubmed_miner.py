@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 # Change log:
+# * v1.0.5, 2024-11-15: Fixed an issue where the logo was not properly referenced.
 # * v1.0.4, 2024-11-15: Added logo to Word document header.
 # * v1.0.3, 2024-11-15: Expanded Word-document information.
 # * v1.0.2, 2024-11-15: Added retry logic for PubMed API, better logging for aliases, results directory customization, improved input validation, enhanced plotting, and bar annotations.
@@ -26,7 +27,7 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.0.4'
+VERSION = '1.0.5'
 VERSION_DATE = '2024-11-15'
 COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
@@ -413,8 +414,9 @@ def add_table_to_doc(doc, data, headers, title):
     doc.add_paragraph()
 
 # Write results to Word
-def write_to_word(author_data, output_file, results_dir, logger, args):
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 
+def write_to_word(author_data, output_file, results_dir, logger, args):
     """
     Write the combined results for all authors to a Word document.
     """
@@ -430,13 +432,15 @@ def write_to_word(author_data, output_file, results_dir, logger, args):
     header_paragraph = header.paragraphs[0]
 
     # Add the logo to the header
-    logo_path = "FullLogo_Transparent.png"  # Update this path as needed
+    logo_path = os.path.join("images/FullLogo_Transparent.png")  # Ensure path is correct
     try:
-        header_paragraph.add_run().add_picture(logo_path, width=Inches(1.5))  # Adjust size as needed
+        run = header_paragraph.add_run()
+        run.add_picture(logo_path, width=Inches(1.5))  # Adjust size as needed
         header_paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
     except Exception as e:
         logger.error(f"Could not add logo to Word document: {e}")
 
+    # Add main content to the document
     document.add_heading(f"Publications for {query_quarter} at the Central Diagnostics Laboratory", level=1)
     document.add_paragraph(f"This document summarizes the publications linked to the Central Diagnostics Laboratory (CDL) at the University Medical Center Utrecht (UMCU).")
     document.add_paragraph()
