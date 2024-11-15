@@ -1,4 +1,4 @@
-# [PubMed Miner](https://github.com/swvanderlaan/PubMed_Miner) <img align="right" height="175" src=images/FullLogo_Transparent.png>
+# [PubMed Miner](https://github.com/swvanderlaan/PubMed_Miner) <img align="right" height="200" src=images/FullLogo_Transparent.png>
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/downloads/release/python-390/)
 
