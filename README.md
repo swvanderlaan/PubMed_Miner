@@ -103,5 +103,4 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 --------------
 
 #### MIT License
-##### <a href='https://www.umcutrecht.nl/en/centraal-diagnostisch-laboratorium'><img src='images/UMCU_2019_logo_liggend_rgb.png' align="center" height="45" /></a> 
- Copyright (c) 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.
+##### <a href='https://www.umcutrecht.nl/en/centraal-diagnostisch-laboratorium'><img src='images/UMCU_2019_logo_liggend_rgb.png' align="center" height="45" /></a> Copyright (c) 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.
