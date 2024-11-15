@@ -43,7 +43,9 @@ pip install xlsxwriter
 
 ## How to use
 
-The script is really easy to use. You can run it from the command line. For example:
+### PubMed Miner
+
+The `pubmed_miner.py` is really easy to use. You can run it from the command line. For example:
 
 ```
 python pubmed_miner.py --email your_mail@whatever.com --verbose --year 2023-2024 --names "last_name IN"
@@ -55,6 +57,7 @@ Some arguments are required and some are optional. You can see the help message 
 python pubmed_miner.py --help
 ```
 
+```
 Required arguments:
     `-e`, `--email` <email-address>  Email address for PubMed API access.
 
@@ -68,6 +71,39 @@ Optional arguments:
     `-r`, `--results-dir` <dir>      Directory to save results. Default: results.
     `-v`, `--verbose`                Enable verbose output.
     `-V`, `--version`                Show program's version number and exit.
+```
+
+### Article Meta Viewer 
+
+If you want to get meta data for a particular article, you can use the `article_meta.py` script to do this. This script requires a PubMed ID and an email address to access the PubMed API. It will fetch metadata for the specified article and display it in the console.
+
+```
+python article_meta.py --email your_mail@whatever.com --pubmedid 38698167 --verbose
+```
+
+Some arguments are required and some are optional. You can see the help message by running:
+
+```
+python article_meta.py --help
+```
+
+```
+Required arguments:
+    `-e`, `--email` <email-address>          Email address for PubMed API access.
+    `-p`, `--pubmedid` PUBMEDID    PubMed ID of the article to fetch metadata for.
+
+Optional arguments:
+    `-v, --verbose`              Enable verbose output.
+    `-V, --version`              Show program's version number and exit.
+
+Example:
+    python article_meta.py --email <email-address> --pubmedid 38698167 --verbose
+```
+
+## Questions, requests, feedback or issues?
+
+You can use the [GitHub issue tracker](https://github.com/swvanderlaan/PubMed_Miner/issues) to report bugs, issues, or to request new features. If you have any questions, feedback, or requests, please feel free post these there.
+
 
 ## Acknowledgements
 Dr. Sander W. van der Laan is funded through EU H2020 TO_AITION (grant number: 848146), EU HORIZON NextGen (grant number: 101136962), EU HORIZON MIRACLE (grant number: 101115381), and Health~Holland PPP Allowance ‘Getting the Perfect Image’.
@@ -79,7 +115,7 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 
 #### Changes log
     
-    _Version:_      v1.0.5</br>
+    _Version:_      v1.0.6</br>
     _Last update:_  2024-11-15</br>
     _Written by:_   Sander W. van der Laan (s.w.vanderlaan-2[at]umcutrecht.nl).
     
@@ -94,6 +130,7 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
     _W_
 
     **Changes log**
+    * v1.0.6, 2024-11-15: Added top 10 journals plot. Fixed issue with JID extraction. Fixed issue with open access extraction. Added more logging. Added --debug flag. 
     * v1.0.5, 2024-11-15: Fixed an issue where the logo was not properly referenced.
     * v1.0.4, 2024-11-15: Added logo to Word document header.
     * v1.0.3, 2024-11-15: Expanded Word-document information.

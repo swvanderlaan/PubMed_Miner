@@ -76,7 +76,7 @@ This script requires a PubMed ID and an email address to access the PubMed API.
 It will fetch metadata for the specified article and display it in the console.
 
 Required arguments:
-    -e, --email EMAIL          Email address for PubMed API access.
+    -e, --email <email-address>          Email address for PubMed API access.
     -p, --pubmedid PUBMEDID    PubMed ID of the article to fetch metadata for.
 
 Optional arguments:
