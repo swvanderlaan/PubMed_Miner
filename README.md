@@ -77,8 +77,6 @@ We are thankful for the support of the Leducq Fondation ‘PlaqOmics’ and ‘A
 ### Disclosures
 Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 
-<a href='https://www.umcutrecht.nl/en/centraal-diagnostisch-laboratorium'><img src='images/UMCU_2019_logo_liggend_rgb.png' align="center" height="75" /></a> 
-
 #### Changes log
     
     _Version:_      v1.0.3</br>
@@ -105,4 +103,5 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 --------------
 
 #### MIT License
-##### Copyright (c) 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.
+##### <a href='https://www.umcutrecht.nl/en/centraal-diagnostisch-laboratorium'><img src='images/UMCU_2019_logo_liggend_rgb.png' align="center" height="45" /></a> 
+ Copyright (c) 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.
