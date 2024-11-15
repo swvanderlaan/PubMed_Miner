@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 # Change log:
+# * v1.0.6, 2024-11-15: Added top 10 journals plot. Fixed issue with JID extraction. Fixed issue with open access extraction. Added more logging. Added --debug flag. 
 # * v1.0.5, 2024-11-15: Fixed an issue where the logo was not properly referenced.
 # * v1.0.4, 2024-11-15: Added logo to Word document header.
 # * v1.0.3, 2024-11-15: Expanded Word-document information.
@@ -27,7 +28,7 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.0.5'
+VERSION = '1.0.6'
 VERSION_DATE = '2024-11-15'
 COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
@@ -58,7 +59,7 @@ DEFAULT_NAMES = ["van der Laan SW", "Pasterkamp G", "Mokry M", "Schiffelers RM",
 DEFAULT_DEPARTMENTS = ["Central Diagnostic Laboratory"]
 
 # Setup Logging
-def setup_logger(results_dir, verbose):
+def setup_logger(results_dir, verbose, debug):
     """
     Setup the logger to log to a file and console.
     """
@@ -67,12 +68,19 @@ def setup_logger(results_dir, verbose):
     os.makedirs(results_dir, exist_ok=True)
     
     logger = logging.getLogger('pubmed_miner')
-    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    # Determine logging level
+    if debug:
+        level = logging.DEBUG
+    elif verbose:
+        level = logging.INFO
+    else:
+        level = logging.WARNING
+    logger.setLevel(level)
     
     fh = logging.FileHandler(log_file)
-    fh.setLevel(logging.DEBUG)
+    fh.setLevel(logging.DEBUG)  # File should always capture all messages
     ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG if verbose else logging.INFO)
+    ch.setLevel(level)  # Console output based on verbosity/debug
     
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     fh.setFormatter(formatter)
@@ -137,12 +145,13 @@ Required arguments:
 Optional arguments:
     -n, --names <names>          List of author names to search for. 
                                     Default: {DEFAULT_NAMES} with these aliases: {ALIAS_MAPPING}.
-    -d, --departments <depts>    List of departments to search for. Default: {DEFAULT_DEPARTMENTS}.
+    -dep, --departments <depts>    List of departments to search for. Default: {DEFAULT_DEPARTMENTS}.
     -org, --organization <org>   Organization name for filtering results. Default: {DEFAULT_ORGANIZATION}.
     -y, --year <year>            Filter publications by year or year range (e.g., 2024 or 2017-2024).
     -o, --output-file <file>     Output base name for the Word and Excel files. Default: date_CDL_UMCU_Publications.
     -r, --results-dir <dir>      Directory to save results. Default: results.
     -v, --verbose                Enable verbose output.
+    -d, --debug                  Enable debug output.
     -V, --version                Show program's version number and exit.
 
 Example:
@@ -152,12 +161,13 @@ Example:
         formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("-e", "--email", required=True, help="Email for PubMed API access.")
     parser.add_argument("-n", "--names", nargs='+', default=DEFAULT_NAMES, help="List of author names to search for.")
-    parser.add_argument("-d", "--departments", nargs='+', default=DEFAULT_DEPARTMENTS, help="List of departments to search for.")
+    parser.add_argument("-dep", "--departments", nargs='+', default=DEFAULT_DEPARTMENTS, help="List of departments to search for.")
     parser.add_argument("-org", "--organization", default=DEFAULT_ORGANIZATION, help="Organization name for filtering results.")
     parser.add_argument("-y", "--year", help="Filter publications by year or year range (e.g., 2024 or 2017-2024).")
     parser.add_argument("-o", "--output-file", default="CDL_UMCU_Publications", help="Output base name for the Word and Excel files.")
     parser.add_argument("-r", "--results-dir", default="results", help="Directory to save results.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output.")
+    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug output.")
     parser.add_argument('-V', '--version', action='version', version=f'{VERSION_NAME} {VERSION} ({VERSION_DATE})')
     return parser.parse_args()
 
@@ -195,21 +205,47 @@ def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, 
         authors = re.findall(r"AU  - (.+)", record)
         authors = [ALIAS_MAPPING.get(author, author) for author in authors]  # Replace aliases with canonical names
         title = re.search(r"TI  - (.+)", record).group(1) if re.search(r"TI  - (.+)", record) else "No title found"
-        journal = re.search(r"JT  - (.+)", record).group(1) if re.search(r"JT  - (.+)", record) else "No journal found"
+        journal_abbr = re.search(r"TA  - (.+)", record).group(1) if re.search(r"TA  - (.+)", record) else "No journal abbreviation found"
+        # journal_id = re.search(r"JID  - (.+)", record).group(1) if re.search(r"JID  - (.+)", record) else "No journal ID"
+        # Extract Journal ID with debugging print
+        jid_match = re.search(r"JID\s*-\s*(\d+)", record)
+        if jid_match:
+            journal_id = jid_match.group(1)
+            # debug
+            # logger.debug(f"Extracted Journal ID: {journal_id}")
+        else:
+            journal_id = "No journal ID"
+            # debug
+            # logger.debug(f"No Journal ID found in record.")
         pub_date = re.search(r"DP  - (.+)", record).group(1)[:4] if re.search(r"DP  - (.+)", record) else "Unknown Year"
         doi_match = re.search(r"AID - (10\..+?)(?: \[doi\])", record)
         doi_link = f"https://doi.org/{doi_match.group(1)}" if doi_match else "No DOI found"
         pub_type = re.findall(r"PT  - (.+)", record)
-        publication_type = 'Other'
-        if "Journal Article" in pub_type:
-            publication_type = "Journal Article"
-        elif "Review" in pub_type:
-            publication_type = "Review"
-        elif "Book" in pub_type:
-            publication_type = "Book"
+        source = re.search(r"SO  - (.+)", record).group(1) if re.search(r"SO  - (.+)", record) else "No source found"
 
-        # Determine access type
-        access_type = "open access" if "PMC - Free Full Text" in record else "closed access"
+        # Extract UOF (Update of) field
+        uof_match = re.search(r"UOF\s*-\s*(.+)", record)
+        uof = uof_match.group(1) if uof_match else "No UOF"
+
+        # Determine publication type based on PT and SO
+        publication_type = "Other"
+        if "Review" in pub_type or "Review" in source:
+            publication_type = "Review"
+        elif "Book" in pub_type or "Book" in source:
+            publication_type = "Book"
+        elif "Journal Article" in pub_type or "Journal Article" in source:
+            publication_type = "Journal Article"
+
+        # Determine access type based on the presence of a PMC ID
+        pmc_match = re.search(r"PMC\s+-\s+PMC\d+", record)
+        if pmc_match:
+            access_type = "open access"
+            # debug
+            # logger.debug(f"Detected PMC ID: {pmc_match.group()}")
+        else:
+            access_type = "closed access"
+            # debug
+            # logger.debug(f"No PMC ID detected; setting access type to 'closed access'.")
 
         # Skip errata or corrections
         if "ERRATUM" in title.upper() or "AUTHOR CORRECTION" in title.upper():
@@ -221,12 +257,38 @@ def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, 
             if not (start_year <= int(pub_date) <= end_year):
                 logger.info(f"Skipping [{title}] as it falls outside the year range.")
                 continue
+        
+        # Check if the UOF references preprint servers and extract DOI
+        uof_doi = None
+        if any(preprint_source in uof for preprint_source in ["medRxiv", "bioRxiv", "arXiv"]):
+            logger.info(f"PMID {pub_id} references a preprint ({uof}). Adding to preprints.")
+            uof_parts = uof.split()
+            for part in uof_parts:
+                if part.startswith("10."):
+                    uof_doi = f"https://doi.org/{part}"
+                    break
+            uof_citation = " ".join(uof_parts[:uof_parts.index(part)]) if uof_doi else uof
+            preprints.append((pub_id, canonical_author if canonical_author in authors else f"{canonical_author} et al.", pub_date, journal_abbr, journal_id, title, uof_doi, uof_citation, publication_type))
 
         # Separate preprints
         if "Preprint" in pub_type:
-            preprints.append((pub_id, canonical_author if canonical_author in authors else f"{canonical_author} et al.", pub_date, journal, title, publication_type, doi_link, access_type))
+            preprints.append((pub_id, canonical_author if canonical_author in authors else f"{canonical_author} et al.", pub_date, journal_abbr, journal_id, title, doi_link, source, publication_type, access_type))
         else:
-            publications.append((pub_id, canonical_author if canonical_author in authors else f"{canonical_author} et al.", pub_date, journal, title, publication_type, doi_link, access_type))
+            publications.append((pub_id, canonical_author if canonical_author in authors else f"{canonical_author} et al.", pub_date, journal_abbr, journal_id, title, doi_link, source, publication_type, access_type))
+        # debug
+        logger.debug(f"Found MEDLINE record for PubMed ID {pub_id} matching criteria (within year range).")
+        logger.debug(f"Authors: {authors}")
+        logger.debug(f"Title: {title}")
+        logger.debug(f"Journal: {journal_abbr}")
+        logger.debug(f"Journal ID: {journal_id}")
+        logger.debug(f"Publication Date: {pub_date}")
+        logger.debug(f"DOI: {doi_link}")
+        logger.debug(f"Publication Type: {publication_type}")
+        logger.debug(f"Citation: {source}")
+        logger.debug(f"Access Type: {access_type}")
+        logger.debug(f"UOF: {uof}")
+        # debug - this produces a lot of output
+        logger.debug(f"This was the full record:\n{record}")
 
     return publications, preprints
 
@@ -242,14 +304,26 @@ def analyze_publications(publications_data, main_author):
     author_year_count = defaultdict(lambda: defaultdict(int))
     year_journal_count = defaultdict(lambda: defaultdict(int))
     pub_type_count = defaultdict(lambda: defaultdict(int))
-    
+
     for pub in publications_data:
-        pub_id, author, year, journal, title, pub_type, doi_link, access_type = pub
+        (
+            pub_id,
+            author,
+            year,
+            journal_abbr,
+            journal_id,
+            title,
+            doi_link,
+            citation,
+            pub_type,
+            access_type,
+        ) = pub  # Adjusted unpacking to match the expanded structure
+        
         if canonical_author in author:
             author_count[canonical_author] += 1
             author_year_count[canonical_author][year] += 1
             year_count[year] += 1
-            year_journal_count[year][journal] += 1
+            year_journal_count[year][journal_abbr] += 1
             pub_type_count[pub_type][year] += 1
     
     return author_count, year_count, author_year_count, year_journal_count, pub_type_count
@@ -258,13 +332,6 @@ def analyze_publications(publications_data, main_author):
 def write_to_excel(author_data, output_file, results_dir, logger):
     """
     Write the combined results for all authors into six sheets of an Excel file.
-    Each sheet represents one of the following tables:
-    1. Publications (deduplicated by PubMed ID with combined authors, includes access type)
-    2. Preprints (deduplicated by PubMed ID with combined authors)
-    3. Number of Publications per Author
-    4. Number of Publications per Year (deduplicated with Authors column)
-    5. Number of Publications per Year per Journal (deduplicated by PubMed ID with combined authors)
-    6. Publication Type by Year (deduplicated with Authors column)
     """
     logger.info("Writing results to Excel file.")
     output_file = f"{datetime.now().strftime('%Y%m%d')}_{output_file}"  # Add date to the filename
@@ -277,23 +344,25 @@ def write_to_excel(author_data, output_file, results_dir, logger):
         canonical_author = ALIAS_MAPPING.get(main_author, main_author)
         for pub in publications:
             publications_data.append(list(pub) + [canonical_author])
+    logger.debug(f"Publications data: {publications_data[:3]}")  # Log first 3 publications
     publications_df = pd.DataFrame(
         publications_data,
-        columns=["PubMed ID", "Author(s)", "Year", "Journal", "Title", "Publication Type", "DOI Link", "Access Type", "Main Author"]
+        columns=["PubMed ID", "Author", "Year", "Journal", "JID", "Title", "DOI Link", "Citation", "Publication Type", "Access Type", "Main Author"]
     )
 
     # Deduplicate based on PubMed ID and combine authors for duplicates in publications
     publications_df = (
         publications_df.groupby("PubMed ID")
         .agg({
-            "Author(s)": lambda x: ", ".join(sorted(set(x))),  # Combine full unique author names
+            "Author": lambda x: ", ".join(sorted(set(x))),  # Combine full unique author names
             "Year": "first",
             "Journal": "first",
+            "JID": "first",
             "Title": "first",
-            "Publication Type": "first",
             "DOI Link": "first",
+            "Citation": "first",
+            "Publication Type": "first",
             "Access Type": "first",
-            "Main Author": lambda x: ", ".join(sorted(set(x)))  # Combine main authors
         })
         .reset_index()
     )
@@ -308,23 +377,24 @@ def write_to_excel(author_data, output_file, results_dir, logger):
         canonical_author = ALIAS_MAPPING.get(main_author, main_author)
         for preprint in preprints:
             preprints_data.append(list(preprint) + [canonical_author])
+    logger.debug(f"Preprints data: {preprints_data[:3]}")  # Log first 3 preprints
     preprints_df = pd.DataFrame(
         preprints_data,
-        columns=["PubMed ID", "Author(s)", "Year", "Journal", "Title", "Publication Type", "DOI Link", "Access Type", "Main Author"]
+        columns=["PubMed ID", "Author", "Year", "Journal", "JID", "Title", "DOI Link", "Citation", "Publication Type", "Access Type", "Main Author"]
     )
 
     # Deduplicate based on PubMed ID and combine authors for duplicates in preprints
     preprints_df = (
         preprints_df.groupby("PubMed ID")
         .agg({
-            "Author(s)": lambda x: ", ".join(sorted(set(x))),  # Combine full unique author names
+            "Author": lambda x: ", ".join(sorted(set(x))),  # Combine full unique author names
             "Year": "first",
             "Journal": "first",
+            "JID": "first",
             "Title": "first",
-            "Publication Type": "first",
             "DOI Link": "first",
-            "Access Type": "first",
-            "Main Author": lambda x: ", ".join(sorted(set(x)))  # Combine main authors
+            "Citation": "first",
+            "Publication Type": "first",
         })
         .reset_index()
     )
@@ -414,8 +484,6 @@ def add_table_to_doc(doc, data, headers, title):
     doc.add_paragraph()
 
 # Write results to Word
-from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-
 def write_to_word(author_data, output_file, results_dir, logger, args):
     """
     Write the combined results for all authors to a Word document.
@@ -468,25 +536,48 @@ def write_to_word(author_data, output_file, results_dir, logger, args):
         # Main publications and preprints for this author
         if publications:
             logger.info(f"Adding {len(publications)} publications for {canonical_author}.")
-            valid_publications = [row for row in publications if len(row) == 8]
-            add_table_to_doc(
-                document,
-                valid_publications,
-                headers=["PubMed ID", "Author", "Year", "Journal", "Title", "Publication Type", "DOI Link", "Access Type"],
-                title="Main Publications",
-            )
+            
+            # Debugging: Check structure of publications
+            logger.debug(f"Publications for {canonical_author}: {publications[:3]}")  # Log first 3 publications
+            
+            # Ensure valid publications align with expected structure
+            valid_publications = [
+                pub for pub in publications if len(pub) >= 10
+            ]  # Adjust for expected columns
+            
+            if not valid_publications:
+                logger.warning(f"No valid publications found for {canonical_author}. Check data structure.")
+            else:
+                add_table_to_doc(
+                    document,
+                    valid_publications,
+                    headers=["PubMed ID", "Author", "Year", "Journal", "JID", "Title", "DOI Link", "Citation", "Publication Type", "Access Type"],
+                    title="Main Publications",
+                )
         else:
             logger.warning(f"No publications found for {canonical_author}.")
 
         if preprints:
             logger.info(f"Adding {len(preprints)} preprints for {canonical_author}.")
-            valid_preprints = [row for row in preprints if len(row) == 8]
-            add_table_to_doc(
-                document,
-                valid_preprints,
-                headers=["PubMed ID", "Author", "Year", "Journal", "Title", "Publication Type", "DOI Link", "Access Type"],
-                title="Preprints",
-            )
+            
+            # Debugging: Check structure of preprints
+            logger.debug(f"Raw Preprints for {canonical_author}: {preprints}")
+            
+            # Adjust for expected structure
+            valid_preprints = [
+                preprint for preprint in preprints if len(preprint) >= 9
+            ]
+            
+            if not valid_preprints:
+                logger.warning(f"No valid preprints found for {canonical_author}. Check data structure.")
+            else:
+                logger.info(f"Adding {len(valid_preprints)} valid preprints for {canonical_author}.")
+                add_table_to_doc(
+                    document,
+                    valid_preprints,
+                    headers=["PubMed ID", "Author", "Year", "Journal", "JID", "Title", "DOI Link", "Citation", "Publication Type"],
+                    title="Preprints",
+                )
         else:
             logger.warning(f"No preprints found for {canonical_author}.")
 
@@ -523,6 +614,9 @@ def write_to_word(author_data, output_file, results_dir, logger, args):
         f"{datetime.now().strftime('%Y%m%d')}_publications_per_author.png",
         f"{datetime.now().strftime('%Y%m%d')}_publications_per_year.png",
         f"{datetime.now().strftime('%Y%m%d')}_publications_per_author_and_year.png",
+        f"{datetime.now().strftime('%Y%m%d')}_top10_journals_grouped.png",
+        f"{datetime.now().strftime('%Y%m%d')}_total_publications_preprints_by_author.png",
+        f"{datetime.now().strftime('%Y%m%d')}_publications_by_access_type.png",
     ]:
         plot_path = os.path.join(results_dir, plot_name)
         if os.path.exists(plot_path):
@@ -540,7 +634,7 @@ def write_to_word(author_data, output_file, results_dir, logger, args):
     logger.info(f"Word document saved to [{output_path}].")
 
 # Plot the results
-def plot_results(author_data, results_dir):
+def plot_results(author_data, results_dir, logger):
     """
     Plot the results for each author and save the plots.
     """
@@ -551,7 +645,11 @@ def plot_results(author_data, results_dir):
     colors = plt.colormaps["tab10"](np.linspace(0, 1, len(canonical_authors)))
     color_map = {canonical_author: colors[idx] for idx, canonical_author in enumerate(canonical_authors)}
 
+    # Access type color mapping
+    access_color_map = {"open access": "green", "closed access": "red"}
+
     # Plot publications per author
+    logger.info("> Plotting publications per author.")
     fig, ax = plt.subplots()
     for canonical_author, (_, _, author_count, _, _, _, _) in author_data.items():
         ax.bar(canonical_author, author_count[canonical_author], color=color_map[canonical_author], label=canonical_author)
@@ -563,6 +661,41 @@ def plot_results(author_data, results_dir):
     plt.tight_layout()
     plt.savefig(os.path.join(results_dir, f"{date_str}_publications_per_author.png"))
 
+    # Total number of publications and preprints grouped by author and year (two panels)
+    logger.info("> Plotting total publications and preprints grouped by author and year (two panels).")
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7), sharey=True)
+    access_types = ["open access", "closed access"]
+
+    # Process data for plotting
+    for idx, access_type in enumerate(access_types):
+        ax = axes[idx]
+        for canonical_author, (publications, preprints, _, _, _, _, _) in author_data.items():
+            yearly_totals = defaultdict(int)
+            for pub in publications + preprints:
+                pub_access_type = pub[-1]  # Access type is the last field
+                year = int(pub[2])  # Year is the third field
+                if pub_access_type == access_type:
+                    yearly_totals[year] += 1
+            years = sorted(yearly_totals.keys())
+            counts = [yearly_totals[year] for year in years]
+            ax.bar(
+                years,
+                counts,
+                label=canonical_author,
+                color=color_map[canonical_author],
+                alpha=0.8,
+            )
+        ax.set_title(f"Total Publications ({access_type.capitalize()})")
+        ax.set_xlabel("Year")
+        ax.set_xticks(years)
+        ax.set_xticklabels(years, rotation=45)
+        if idx == 0:
+            ax.set_ylabel("Total Publications and Preprints")
+        ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(results_dir, f"{date_str}_total_publications_preprints_by_author.png"))
+
     # Bar plot for publications per year (stacked by author)
     fig, ax = plt.subplots()
     width = 0.8 / len(author_data)
@@ -571,6 +704,7 @@ def plot_results(author_data, results_dir):
     all_years = sorted(set(year for _, (_, _, _, year_count, _, _, _) in author_data.items() for year in year_count))
 
     # Plot each author's publications per year with unique color
+    logger.info("> Plotting publications per year.")
     for idx, (canonical_author, (_, _, _, year_count, _, _, _)) in enumerate(author_data.items()):
         counts = [year_count.get(year, 0) for year in all_years]
         ax.bar(
@@ -592,6 +726,7 @@ def plot_results(author_data, results_dir):
     plt.savefig(os.path.join(results_dir, f"{date_str}_publications_per_year.png"))
 
     # Plot publications per author per year (stacked bar plot)
+    logger.info("> Plotting publications per author and year.")
     fig, ax = plt.subplots()
     width = 0.2
     x = sorted({year for _, (_, _, _, year_count, _, _, _) in author_data.items() for year in year_count})
@@ -608,6 +743,91 @@ def plot_results(author_data, results_dir):
     plt.tight_layout()
     plt.savefig(os.path.join(results_dir, f"{date_str}_publications_per_author_and_year.png"))
 
+    # Top 10 journals by number of publications (grouped by year)
+    logger.info("> Plotting top 10 journals.")
+    journal_counts = defaultdict(lambda: defaultdict(int))
+    for _, (_, _, _, _, _, year_journal_count, _) in author_data.items():
+        for year, journals in year_journal_count.items():
+            for journal, count in journals.items():
+                journal_counts[journal][year] += count
+
+    # Flatten journal counts and sort by total
+    total_journal_counts = {journal: sum(counts.values()) for journal, counts in journal_counts.items()}
+    sorted_journals = sorted(total_journal_counts.items(), key=lambda x: x[1], reverse=True)
+    top_10_journals = [journal for journal, _ in sorted_journals[:10]]  # Keep only top 10
+
+    # Prepare data for plotting
+    all_years = sorted({year for journal in journal_counts for year in journal_counts[journal]})
+    grouped_counts = defaultdict(lambda: defaultdict(int))
+    for journal in top_10_journals:
+        for year in all_years:
+            grouped_counts[journal][year] = journal_counts[journal].get(year, 0)
+
+    # Plot data
+    fig, ax = plt.subplots(figsize=(12, 7))
+    bar_width = 0.8 / len(top_10_journals)  # Adjust bar width based on the number of journals
+    colors = plt.cm.tab10(np.linspace(0, 1, len(top_10_journals)))  # Generate a color palette
+
+    # Create x positions for each year
+    x_positions = np.arange(len(all_years))
+
+    # Plot each journal as a separate group
+    for idx, journal in enumerate(top_10_journals):
+        counts = [grouped_counts[journal][year] for year in all_years]
+        offset = idx * bar_width  # Offset each journal's bars
+        ax.bar(
+            x_positions + offset,
+            counts,
+            width=bar_width,
+            label=journal,
+            color=colors[idx],
+        )
+
+    # Customize x-axis and labels
+    ax.set_xticks(x_positions + bar_width * len(top_10_journals) / 2)  # Center x-ticks
+    ax.set_xticklabels(all_years, rotation=45)
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Number of Publications")
+    ax.set_title("Top 10 Journals (Grouped by Year)")
+    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(results_dir, f"{date_str}_top10_journals_grouped.png"))
+
+    # Publications grouped by access type and year (not stacked)
+    logger.info("> Plotting publications by access type and year (grouped).")
+    fig, ax = plt.subplots(figsize=(12, 7))
+    access_counts = {"open access": defaultdict(int), "closed access": defaultdict(int)}
+
+    # Process data for grouped bar plot
+    for _, (publications, _, _, _, _, _, _) in author_data.items():
+        for pub in publications:
+            access_type = pub[-1]
+            if access_type in access_counts:
+                access_counts[access_type][int(pub[2])] += 1
+
+    all_years = sorted(set(year for totals in access_counts.values() for year in totals.keys()))
+    x_indices = np.arange(len(all_years))
+    width = 0.35
+    for idx, (access_type, yearly_counts) in enumerate(access_counts.items()):
+        counts = [yearly_counts[year] for year in all_years]
+        ax.bar(
+            x_indices + idx * width,
+            counts,
+            width=width,
+            label=access_type,
+            color=access_color_map[access_type],
+            alpha=0.8,
+        )
+    ax.set_xticks(x_indices + width / 2)
+    ax.set_xticklabels(all_years, rotation=45)
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Number of Publications")
+    ax.set_title("Publications by Access Type and Year (Grouped)")
+    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.tight_layout()
+    plt.savefig(os.path.join(results_dir, f"{date_str}_publications_by_access_type.png"))
+
 # Main function
 def main():
     args = parse_arguments()
@@ -615,7 +835,7 @@ def main():
     os.makedirs(results_dir, exist_ok=True)
     today = datetime.now().strftime('%Y%m%d')
     output_file = os.path.join(results_dir, f"{today}_{args.output_file}")
-    logger = setup_logger(results_dir, args.verbose)
+    logger = setup_logger(results_dir, args.verbose, args.debug)
 
     start_year, end_year = None, None
     if args.year:
@@ -637,6 +857,7 @@ def main():
     logger.info(f"  - filtering by year (range) [{args.year}]" if args.year else "No year filter used.")
     logger.info(f"  - output file(s): [{output_file}]")
     logger.info(f"> PubMed email used: {args.email}.")
+    logger.info(f"> Debug mode: {'On' if args.debug else 'Off'}.")
     logger.info(f"> Verbose mode: {'On' if args.verbose else 'Off'}.\n")
 
     author_data = {}
@@ -663,7 +884,7 @@ def main():
 
     logger.info(f"Done. Summarizing and saving results.\n")
     logger.info(f"Saving plots to [{results_dir}].")
-    plot_results(author_data, results_dir)
+    plot_results(author_data, results_dir, logger)
 
     # Save results to Word and Excel
     write_to_word(author_data, args.output_file, results_dir, logger, args)
