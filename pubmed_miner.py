@@ -17,13 +17,14 @@ import numpy as np
 import pandas as pd
 
 # Change log:
+# * v1.0.3, 2024-11-15: Expanded Word-document information.
 # * v1.0.2, 2024-11-15: Added retry logic for PubMed API, better logging for aliases, results directory customization, improved input validation, enhanced plotting, and bar annotations.
 # * v1.0.1, 2024-11-15: Added alias handling for authors, improved deduplication of YearCount and PubTypeYearCount in Excel, added Authors column.
 # * v1.0.0, 2024-11-14: Initial version. Added --year flag for filtering by year range, adjusted tables and figures by author. Stratified tables and figures for each author in DEFAULT_NAMES. Summarized results in Word and Excel files. Added support for "Access Type" in Publications sheet.
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.0.2'
+VERSION = '1.0.3'
 VERSION_DATE = '2024-11-15'
 COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
@@ -421,14 +422,35 @@ def add_table_to_doc(doc, data, headers, title):
     doc.add_paragraph()
 
 # Write results to Word
-def write_to_word(author_data, output_file, results_dir, logger):
+def write_to_word(author_data, output_file, results_dir, logger, args):
+
     """
     Write the combined results for all authors to a Word document.
     """
     logger.info("Writing results to Word document.")
     output_file = f"{datetime.now().strftime('%Y%m%d')}_{output_file}"  # Add date to the filename
+    query_date = datetime.now().strftime('%Y-%m-%d')
+    query_quarter = (datetime.now().month - 1) // 3 + 1
     document = Document()
-    document.add_heading("Publications Linked to UMC Utrecht", level=1)
+
+    document.add_heading(f"Publications for {query_quarter} at the Central Diagnostics Laboratory", level=1)
+    document.add_paragraph(f"This document summarizes the publications linked to the Central Diagnostics Laboratory (CDL) at the University Medical Center Utrecht (UMCU).\n")
+    document.add_paragraph()
+    document.add_paragraph(f"The following settings are used:")
+    document.add_paragraph(f"* Query date: {query_date}.")
+    document.add_paragraph(f"* Authors: {', '.join(author_data.keys())}.\n")
+    document.add_paragraph(f"* Aliases used: {', '.join(ALIAS_MAPPING.keys())}.\n")
+    document.add_paragraph(f"* Year range: {args.year}.\n" if args.year else "No year filter used.\n")
+    document.add_paragraph(f"* Department(s): {', '.join(DEFAULT_DEPARTMENTS)}.\n")
+    document.add_paragraph(f"* Organization: {DEFAULT_ORGANIZATION}.\n")
+    document.add_paragraph()
+    document.add_paragraph(f"Results saved on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.\n")
+    document.add_paragraph(f"Log file saved to {os.path.join(results_dir, f'{query_date}_CDL_UMCU_Publications.log')}.\n")
+    document.add_paragraph()
+    document.add_paragraph(f"{VERSION_NAME} v{VERSION} ({VERSION_DATE}).\n")
+    document.add_paragraph(f"{COPYRIGHT}.\n")
+    document.add_paragraph()
+    document.add_paragraph(f"GitHub repository: https://github.com/swvanderlaan/PubMed_Miner. Any issues or requests? Create one here: https://github.com/swvanderlaan/PubMed_Miner/issues.\n")
 
     # Add results for each canonical author
     logger.info(f"> Adding results for {len(author_data)} author(s).")
@@ -630,13 +652,13 @@ def main():
         author_data[canonical_author] = (publications, preprints, author_count, year_count, author_year_count, year_journal_count, pub_type_count)
 
         logger.info(f"Found {len(publications)} publications and {len(preprints)} preprints for [{canonical_author}].\n")
-        
+
     logger.info(f"Done. Summarizing and saving results.\n")
     logger.info(f"Saving plots to [{results_dir}].")
     plot_results(author_data, results_dir)
 
     # Save results to Word and Excel
-    write_to_word(author_data, args.output_file, results_dir, logger)
+    write_to_word(author_data, args.output_file, results_dir, logger, args)
     write_to_excel(author_data, args.output_file, results_dir, logger)
 
     logger.info(f"Saved the following results:")
