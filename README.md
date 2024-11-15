@@ -1,5 +1,5 @@
-[PubMed_Miner](https://github.com/swvanderlaan/PubMed_Miner)<img align="right" height="200" src=images/FullLogo_Transparent.png>
-============
+# [PubMed Miner](https://github.com/swvanderlaan/PubMed_Miner)<img align="right" height="200" src=images/FullLogo_Transparent.png>
+
 [![Languages](https://skillicons.dev/icons?i=py)](https://skillicons.dev) 
 
 Mine PubMed for publication at the Central Diagnostics Laboratory of the Division Laboratories, Pharmacy and Biomedical genetics at the University Medical Center Utrecht, Utrecht University, Utrecht, The Netherlands.
