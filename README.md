@@ -1,10 +1,8 @@
 # [PubMed Miner](https://github.com/swvanderlaan/PubMed_Miner) <img align="right" height="175" src=images/FullLogo_Transparent.png>
+
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/downloads/release/python-390/)
-<!-- [![Languages](https://skillicons.dev/icons?i=py)](https://skillicons.dev) -->
 
-<!-- #### [![Languages](https://skillicons.dev/icons?i=py)](https://skillicons.dev) -->
-
-> *Pubmed Miner* Mine PubMed for publication at the _Central Diagnostics Laboratory_ of the _Division Laboratories, Pharmacy and Biomedical genetics_ at the _University Medical Center Utrecht_, _Utrecht University_, Utrecht, The Netherlands.
+**Pubmed Miner** _Mine PubMed for publication at the Central Diagnostics Laboratory of the _Division Laboratories, Pharmacy and Biomedical genetics at the University Medical Center Utrecht, Utrecht University, Utrecht, The Netherlands._
 
 With `pubmed_miner.py` you can retrieve PubMed publications for a list of authors (and their aliases) and departments from UMC Utrecht. It then analyzes the publication data and saves the results to a Word document and an Excel file, and also produces a few graphs on the fly.
 
