@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 # Change log:
+# * v1.0.10, 2024-11-15: Fixed an issue with consistency of filenaming. Added moving average per author per year to barplot.
 # * v1.0.9, 2024-11-15: Fixed an issue with the dimensions of the preprint and publication tables.
 # * v1.0.8, 2024-11-15: Fixed issue with aliases for departments. Also edit option to include more departments to search for. Fixed handling authors. Fixed output of preprint citation. 
 # * v1.0.7, 2024-11-15: Fixed an issue where the plot for total_publications_preprints_by_author was not displaying the years correctly.
@@ -31,7 +32,7 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.0.9'
+VERSION = '1.0.10'
 VERSION_DATE = '2024-11-15'
 COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
@@ -118,13 +119,13 @@ DEPARTMENT_ALIAS_MAPPING = {
         # Add other aliases as needed
     ],
     # Add other departments as needed
-    # "Laboratory of Experimental Cardiology": [
-    #     "Lab of Experimental Cardiology",
-    #     "Experimental Cardiology",
-    #     "Experimental Cardiology Lab",
-    #     "Experimental Cardiology Laboratory",
-    #     # Add other aliases as needed
-    # ]
+    "Laboratory of Experimental Cardiology": [
+        "Lab of Experimental Cardiology",
+        "Experimental Cardiology",
+        "Experimental Cardiology Lab",
+        "Experimental Cardiology Laboratory",
+        # Add other aliases as needed
+    ]
 }
 # Set some defaults
 DEFAULT_ORGANIZATION = "University Medical Center Utrecht"
@@ -138,15 +139,18 @@ DEFAULT_NAMES = ["van der Laan SW",
 "Hoefer IE",
 "Schoneveld AH",
 "Vader P"]
+# DEFAULT_DEPARTMENTS = ["Central Diagnostic Laboratory", "Laboratory of Experimental Cardiology"]
 DEFAULT_DEPARTMENTS = ["Central Diagnostic Laboratory"]
 
 # Setup Logging
-def setup_logger(results_dir, verbose, debug):
+def setup_logger(results_dir, output_base_name, verbose, debug):
     """
     Setup the logger to log to a file and console.
     """
-    date_str = datetime.now().strftime('%Y%m%d')
-    log_file = os.path.join(results_dir, f"{date_str}_CDL_UMCU_Publications.log")
+    # date_str = datetime.now().strftime('%Y%m%d')
+    # log_file = os.path.join(results_dir, f"{date_str}_CDL_UMCU_Publications.log")
+    log_file = os.path.join(results_dir, f"{output_base_name}.log")
+    
     os.makedirs(results_dir, exist_ok=True)
     
     logger = logging.getLogger('pubmed_miner')
@@ -445,13 +449,15 @@ def analyze_publications(publications_data, main_author, logger):
     return author_count, year_count, author_year_count, year_journal_count, pub_type_count
 
 # Write results to Excel
-def write_to_excel(author_data, output_file, results_dir, logger):
+def write_to_excel(author_data, output_base_name, results_dir, logger):
     """
     Write the combined results for all authors into six sheets of an Excel file.
     """
     logger.info("Writing results to Excel file.")
-    output_file = f"{datetime.now().strftime('%Y%m%d')}_{output_file}"  # Add date to the filename
-    writer = pd.ExcelWriter(os.path.join(results_dir, f"{output_file}.xlsx"), engine='xlsxwriter')
+    # output_file = f"{datetime.now().strftime('%Y%m%d')}_{output_file}"  # Add date to the filename
+    # writer = pd.ExcelWriter(os.path.join(results_dir, f"{output_file}.xlsx"), engine='xlsxwriter')
+    output_path = os.path.join(results_dir, f"{output_base_name}.xlsx")
+    writer = pd.ExcelWriter(output_path, engine='xlsxwriter')
 
     # Combine all publications into a single DataFrame
     logger.info("> Combining all publications into a single DataFrame.")
@@ -573,7 +579,7 @@ def write_to_excel(author_data, output_file, results_dir, logger):
     pub_type_year_df.to_excel(writer, sheet_name="PubTypeYearCount", index=False)
 
     # Save the Excel file
-    logger.info(f"Excel file saved to [{os.path.join(results_dir, f'{output_file}.xlsx')}].\n")
+    logger.info(f"Excel file saved to [{output_path})].\n")
     writer.close()
 
 # Word document table creation
@@ -600,12 +606,12 @@ def add_table_to_doc(doc, data, headers, title):
     doc.add_paragraph()
 
 # Write results to Word
-def write_to_word(author_data, output_file, results_dir, logger, args):
+def write_to_word(author_data, output_base_name, results_dir, logger, args):
     """
     Write the combined results for all authors to a Word document.
     """
     logger.info("Writing results to Word document.")
-    output_file = f"{datetime.now().strftime('%Y%m%d')}_{output_file}"  # Add date to the filename
+    # output_file = f"{datetime.now().strftime('%Y%m%d')}_{output_file}"  # Add date to the filename
     query_date = datetime.now().strftime('%Y-%m-%d')
     query_quarter = (datetime.now().month - 1) // 3 + 1
     document = Document()
@@ -727,12 +733,13 @@ def write_to_word(author_data, output_file, results_dir, logger, args):
     logger.info("> Adding graphs for all authors.")
     document.add_heading("Graphs", level=1)
     for plot_name in [
-        f"{datetime.now().strftime('%Y%m%d')}_publications_per_author.png",
-        f"{datetime.now().strftime('%Y%m%d')}_publications_per_year.png",
-        f"{datetime.now().strftime('%Y%m%d')}_publications_per_author_and_year.png",
-        f"{datetime.now().strftime('%Y%m%d')}_top10_journals_grouped.png",
-        f"{datetime.now().strftime('%Y%m%d')}_total_publications_preprints_by_author.png",
-        f"{datetime.now().strftime('%Y%m%d')}_publications_by_access_type.png",
+        f"{output_base_name}_publications_per_author.png",
+        f"{output_base_name}_total_publications_preprints_by_author.png",
+        # f"{output_base_name}_publications_per_year.png",
+        f"{output_base_name}_publications_per_year_with_moving_avg.png",
+        f"{output_base_name}_publications_per_author_and_year.png",
+        f"{output_base_name}_top10_journals_grouped.png",
+        f"{output_base_name}_publications_by_access_type.png",
     ]:
         plot_path = os.path.join(results_dir, plot_name)
         if os.path.exists(plot_path):
@@ -745,16 +752,25 @@ def write_to_word(author_data, output_file, results_dir, logger, args):
             logger.warning(f"Plot file not found: {plot_path}")
 
     # Save the document
-    output_path = os.path.join(results_dir, f"{output_file}.docx")
+    output_path = os.path.join(results_dir, f"{output_base_name}.docx")
     document.save(output_path)
     logger.info(f"Word document saved to [{output_path}].")
 
 # Plot the results
-def plot_results(author_data, results_dir, logger):
+def plot_results(author_data, results_dir, logger, output_base_name):
     """
     Plot the results for each author and save the plots.
     """
     date_str = datetime.now().strftime('%Y%m%d')
+    plot_filenames = {
+        "publications_per_author": f"{output_base_name}_publications_per_author.png",
+        "total_publications_preprints_by_author": f"{output_base_name}_total_publications_preprints_by_author.png",
+        # "publications_per_year": f"{output_base_name}_publications_per_year.png",
+        "publications_per_year_with_moving_avg": f"{output_base_name}_publications_per_year_with_moving_avg.png",
+        "publications_per_author_and_year": f"{output_base_name}_publications_per_author_and_year.png",
+        "top10_journals_grouped": f"{output_base_name}_top10_journals_grouped.png",
+        "publications_by_access_type": f"{output_base_name}_publications_by_access_type.png",
+    }
 
     # Consistent color mapping for authors
     canonical_authors = list(author_data.keys())
@@ -764,7 +780,7 @@ def plot_results(author_data, results_dir, logger):
     # Access type color mapping
     access_color_map = {"open access": "green", "closed access": "red"}
 
-    # Plot publications per author
+    # PLOT publications per author
     logger.info("> Plotting publications per author.")
     fig, ax = plt.subplots()
     for canonical_author, (_, _, author_count, _, _, _, _) in author_data.items():
@@ -775,9 +791,9 @@ def plot_results(author_data, results_dir, logger):
     ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
     plt.xticks(rotation=90)
     plt.tight_layout()
-    plt.savefig(os.path.join(results_dir, f"{date_str}_publications_per_author.png"))
+    plt.savefig(os.path.join(results_dir, plot_filenames["publications_per_author"]))
 
-    # Total number of publications and preprints grouped by author and year (two panels)
+    # PLOT Total number of publications and preprints grouped by author and year (two panels)
     logger.info("> Plotting total publications and preprints grouped by author and year (two panels).")
     fig, axes = plt.subplots(1, 2, figsize=(16, 7), sharey=True)
     access_types = ["open access", "closed access"]
@@ -828,38 +844,60 @@ def plot_results(author_data, results_dir, logger):
         ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
 
     plt.tight_layout()
-    plt.savefig(os.path.join(results_dir, f"{date_str}_total_publications_preprints_by_author.png"))
+    plt.savefig(os.path.join(results_dir, plot_filenames["total_publications_preprints_by_author"]))
 
-    # Bar plot for publications per year (stacked by author)
-    fig, ax = plt.subplots()
-    width = 0.8 / len(author_data)
+    # PLOT publications per year colored and grouped by author with moving average
+    logger.info("> Plotting publications per year with moving average.")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    width = 0.8 / len(author_data)  # Divide bar width by number of authors for grouped bars
 
     # Gather all unique years across authors
     all_years = sorted(set(year for _, (_, _, _, year_count, _, _, _) in author_data.items() for year in year_count))
 
-    # Plot each author's publications per year with unique color
-    logger.info("> Plotting publications per year.")
+    # Define the moving average window size
+    moving_avg_window = 3
+
+    # Plot each author's publications per year with bars and moving average
     for idx, (canonical_author, (_, _, _, year_count, _, _, _)) in enumerate(author_data.items()):
-        counts = [year_count.get(year, 0) for year in all_years]
+        counts = [year_count.get(year, 0) for year in all_years]  # Publications count for each year
+        bar_positions = [year + idx * width for year in range(len(all_years))]  # Bar positions for this author
+
+        # Plot bars for this author
         ax.bar(
-            [y + idx * width for y in range(len(all_years))],
+            bar_positions,
             counts,
             width=width,
             color=color_map[canonical_author],
             label=canonical_author,
+            alpha=0.8,
         )
 
-    # Set x-ticks to display years in the middle of each bar cluster
-    ax.set_xticks([y + (width * len(author_data)) / 2 for y in range(len(all_years))])
+        # Calculate the moving average
+        moving_avg = np.convolve(counts, np.ones(moving_avg_window) / moving_avg_window, mode='valid')
+
+        # Plot the moving average line
+        ax.plot(
+            range(len(moving_avg)),
+            moving_avg,
+            marker='o',
+            label=f"{canonical_author} (Moving Avg)",
+            linestyle='--',
+            color=color_map[canonical_author],
+        )
+
+    # Customize the x-axis
+    ax.set_xticks(range(len(all_years)))
     ax.set_xticklabels(all_years, rotation=45)
     ax.set_xlabel("Year")
     ax.set_ylabel("Number of Publications")
-    ax.set_title("Publications per Year (Colored by Author)")
+    ax.set_title("Publications per Year with Moving Average")
     ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
     plt.tight_layout()
-    plt.savefig(os.path.join(results_dir, f"{date_str}_publications_per_year.png"))
 
-    # Plot publications per author per year (stacked bar plot)
+    # Save the plot
+    plt.savefig(os.path.join(results_dir, plot_filenames["publications_per_year_with_moving_avg"]))
+
+    # PLOT publications per author per year (stacked bar plot)
     logger.info("> Plotting publications per author and year.")
     fig, ax = plt.subplots()
     width = 0.2
@@ -875,9 +913,9 @@ def plot_results(author_data, results_dir, logger):
     ax.set_title("Publications per Author and Year")
     ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
     plt.tight_layout()
-    plt.savefig(os.path.join(results_dir, f"{date_str}_publications_per_author_and_year.png"))
+    plt.savefig(os.path.join(results_dir, plot_filenames["publications_per_author_and_year"]))
 
-    # Top 10 journals by number of publications (grouped by year)
+    # PLOT Top 10 journals by number of publications (grouped by year)
     logger.info("> Plotting top 10 journals.")
     journal_counts = defaultdict(lambda: defaultdict(int))
     for _, (_, _, _, _, _, year_journal_count, _) in author_data.items():
@@ -926,9 +964,9 @@ def plot_results(author_data, results_dir, logger):
     ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
 
     plt.tight_layout()
-    plt.savefig(os.path.join(results_dir, f"{date_str}_top10_journals_grouped.png"))
+    plt.savefig(os.path.join(results_dir, plot_filenames["top10_journals_grouped"]))
 
-    # Publications grouped by access type and year (not stacked)
+    # PLOT Publications grouped by access type and year (not stacked)
     logger.info("> Plotting publications by access type and year (grouped).")
     fig, ax = plt.subplots(figsize=(12, 7))
     access_counts = {"open access": defaultdict(int), "closed access": defaultdict(int)}
@@ -960,17 +998,28 @@ def plot_results(author_data, results_dir, logger):
     ax.set_title("Publications by Access Type and Year (Grouped)")
     ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
     plt.tight_layout()
-    plt.savefig(os.path.join(results_dir, f"{date_str}_publications_by_access_type.png"))
+    plt.savefig(os.path.join(results_dir, plot_filenames["publications_by_access_type"]))
 
 # Main function
 def main():
     args = parse_arguments()
+
+    # Make sure the results directory exists
     results_dir = "results"
     os.makedirs(results_dir, exist_ok=True)
-    today = datetime.now().strftime('%Y%m%d')
-    output_file = os.path.join(results_dir, f"{today}_{args.output_file}")
-    logger = setup_logger(results_dir, args.verbose, args.debug)
 
+    # Get today's date
+    today = datetime.now().strftime('%Y%m%d')
+
+    # File base naming convention
+    # output_file = os.path.join(results_dir, f"{today}_{args.output_file}")
+    base_name = args.output_file if args.output_file else "CDL_UMCU_Publications"
+    output_base_name = f"{today}_{base_name}"
+    
+    # Set up logging
+    logger = setup_logger(results_dir, output_base_name, args.verbose, args.debug)
+
+    # Set year range if provided
     start_year, end_year = None, None
     if args.year:
         start_year, end_year = parse_year_range(args.year)
@@ -979,6 +1028,7 @@ def main():
     for package in ['Bio', 'docx', 'matplotlib', 'numpy', 'pandas']:
         check_install_package(package, logger)
 
+    # Set the email for Entrez
     Entrez.email = args.email
 
     # Print some information
@@ -989,7 +1039,7 @@ def main():
     logger.info(f"  - department(s): {args.departments}")
     logger.info(f"  - organization: ['{args.organization}']")
     logger.info(f"  - filtering by year (range) [{args.year}]" if args.year else "  - no year filter used.")
-    logger.info(f"  - output file(s): [{output_file}]")
+    logger.info(f"  - output file(s): [{output_base_name}]")
     logger.info(f"> PubMed email used: {args.email}.")
     logger.info(f"> Debug mode: {'On' if args.debug else 'Off'}.")
     logger.info(f"> Verbose mode: {'On' if args.verbose else 'Off'}.\n")
@@ -997,6 +1047,7 @@ def main():
     author_data = {}
     logger.info(f"Querying PubMed for publications and preprints.\n")
 
+    # Iterate through all authors
     for main_author in args.names:
         canonical_author = get_canonical_author(main_author, logger)
         logger.info(f"Searching PubMed for canonical author '{canonical_author}' with aliases: {ALIAS_MAPPING.get(canonical_author, [])}")
@@ -1023,19 +1074,20 @@ def main():
 
         logger.info(f"Found {len(publications)} publications and {len(preprints)} preprints for [{canonical_author}].\n")
 
+    # Summarizing and saving results
     logger.info(f"Done. Summarizing and saving results.\n")
     logger.info(f"Saving plots to [{results_dir}].")
-    plot_results(author_data, results_dir, logger)
+    plot_results(author_data, results_dir, logger, output_base_name)
 
     # Save results to Word and Excel
-    write_to_word(author_data, args.output_file, results_dir, logger, args)
-    write_to_excel(author_data, args.output_file, results_dir, logger)
+    write_to_word(author_data, output_base_name, results_dir, logger, args)
+    write_to_excel(author_data, output_base_name, results_dir, logger)
 
     logger.info(f"Saved the following results:")
-    logger.info(f"> Data summarized and saved to {os.path.join(results_dir, f'{today}_{args.output_file}.docx')}.")
-    logger.info(f"> Excel concatenated and saved to {os.path.join(results_dir, f'{today}_{args.output_file}.xlsx')}.")
+    logger.info(f"> Data summarized and saved to {os.path.join(results_dir, f'{output_base_name}.docx')}.")
+    logger.info(f"> Excel concatenated and saved to {os.path.join(results_dir, f'{output_base_name}.xlsx')}.")
     logger.info(f"> Plots saved to {results_dir}/.")
-    logger.info(f"> Log file saved to {os.path.join(results_dir, f'{today}_CDL_UMCU_Publications.log')}.\n")
+    logger.info(f"> Log file saved to {os.path.join(results_dir, f'{output_base_name}.log')}.\n")
     logger.info(f"Thank you for using {VERSION_NAME} v{VERSION} ({VERSION_DATE}).")
     logger.info(f"{COPYRIGHT}")
     logger.info(f"Script completed successfully on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.")
