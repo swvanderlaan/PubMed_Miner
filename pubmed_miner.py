@@ -9,16 +9,25 @@ import subprocess
 import importlib
 import time
 from datetime import datetime
-from Bio import Entrez
 from collections import defaultdict
+
+# Mining PubMed
+from Bio import Entrez
+
+# Word and Excel
 from docx import Document
-from docx.shared import Inches
+from docx.shared import Pt, RGBColor, Inches  # Add Pt for font size and color
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+
+# Plotting
 import matplotlib.pyplot as plt
+
+# Data manipulation
 import numpy as np
 import pandas as pd
 
 # Change log:
+# * v1.1.1, 2024-11-19: Improved Word-docx output. Changed logger-output to be less verbose and move things to the --debug. Clarified logger output further. 
 # * v1.1.0, 2024-11-18: Fixed an issue where not all the aliases for --names, --departments and --organization were properly queried in conjunction with --organization. Added an option to include ORCID in the author alias list. Fixed issue where the moving average plot might not handle edge years (with fewer than moving_avg_window data points) gracefully.
 # * v1.0.10, 2024-11-15: Fixed an issue with consistency of filenaming. Added moving average per author per year to barplot.
 # * v1.0.9, 2024-11-15: Fixed an issue with the dimensions of the preprint and publication tables.
@@ -34,8 +43,9 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.1.0'
-VERSION_DATE = '2024-11-18'
+VERSION = '1.1.1'
+VERSION_DATE = '2024-11-19'
+COPYRIGHT_AUTHOR = 'Sander W. van der Laan'
 COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
 Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International Public License
@@ -111,14 +121,6 @@ ALIAS_MAPPING = {
         "Imo Hofer", 
         # Add other aliases as needed
     ],
-    "Schoneveld AH": [
-        "Schoneveld AH", 
-        "Schoneveld A", 
-        "Arjen H Schoneveld", 
-        "Arjen Schoneveld",
-        "Schoneveld Arjen",
-        # Add other aliases as needed
-    ],
     "Vader P": [
         "Vader P",
         "P Vader", 
@@ -131,11 +133,11 @@ ALIAS_MAPPING = {
 
 # Departement mapping for handling multiple department names
 DEPARTMENT_ALIAS_MAPPING = {
-    "Central Diagnostic Laboratory": [
-        "Central Diagnostic Laboratory",
+    "Central Diagnostics Laboratory": [
+        "Central Diagnostics Laboratory",
         "CDL",
         "CDL Research",
-        "Central Diagnostics Laboratory",
+        "Central Diagnostic Laboratory",
         "Central Diagnostics Laboratory Research",
         "Central Diagnostic Laboratory, Division Laboratories, Pharmacy, and Biomedical genetics",
         "Central Diagnostics Laboratory, Division Laboratories, Pharmacy, and Biomedical genetics"
@@ -175,7 +177,6 @@ ORGANIZATION_ALIAS_MAPPING = {
 }
 
 # Set some defaults
-DEFAULT_ORGANIZATION = "University Medical Center Utrecht"
 DEFAULT_NAMES = ["van der Laan SW", 
 "Pasterkamp G", 
 "Mokry M", 
@@ -184,9 +185,10 @@ DEFAULT_NAMES = ["van der Laan SW",
 "Haitjema S", 
 "den Ruijter HM", 
 "Hoefer IE",
-"Schoneveld AH",
 "Vader P"]
-DEFAULT_DEPARTMENTS = ["Central Diagnostic Laboratory", "Laboratory of Experimental Cardiology"]
+DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory"]
+# DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory", "Laboratory of Experimental Cardiology"]
+DEFAULT_ORGANIZATION = "University Medical Center Utrecht"
 
 # Setup Logging
 def setup_logger(results_dir, output_base_name, verbose, debug):
@@ -256,10 +258,15 @@ def fetch_with_retry(db, term, retries=3, backoff=2):
                 time.sleep(backoff ** attempt)
                 continue
             raise e
+
 # Retry logic for API calls -- needed in validation_results using medline format
+# See also remark at validation_return function: this is not working properly yet.
 def fetch_validation_with_retry(db, term, retries=3, backoff=2):
     """
     Fetch PubMed data with retry logic to handle rate limits or network issues.
+    This version uses the Entrez.efetch function to retrieve MEDLINE format data.
+    It is needed to validate the results based on author and affiliation.
+    Used by the validation_results function.
     """
     for attempt in range(retries):
         try:
@@ -338,8 +345,10 @@ Required arguments:
 Optional arguments:
     -n, --names <names>          List of (main) author names to search for. Could also be an ORCID.
                                  Default: {DEFAULT_NAMES} with these aliases: {ALIAS_MAPPING}.
-    -dep, --departments <depts>  List of departments to search for. Default: {DEFAULT_DEPARTMENTS}.
-    -org, --organization <org>   Organization name for filtering results. Default: {DEFAULT_ORGANIZATION}.
+    -dep, --departments <depts>  List of departments to search for. 
+                                 Default: {DEFAULT_DEPARTMENTS} with these aliases: {DEPARTMENT_ALIAS_MAPPING}.
+    -org, --organization <org>   Organization name for filtering results. 
+                                 Default: {DEFAULT_ORGANIZATION} with these aliases {ORGANIZATION_ALIAS_MAPPING}.
     -y, --year <year>            Filter publications by year or year range (e.g., 2024 or 2017-2024).
     -o, --output-file <file>     Output base name for the Word and Excel files. Default: date_CDL_UMCU_Publications.
     -r, --results-dir <dir>      Directory to save results. Default: results.
@@ -368,28 +377,41 @@ Example:
 def get_canonical_author(author, logger=None):
     """
     Get the canonical author name or ORCID from the ALIAS_MAPPING.
+    First it checks for ORCID format.
+    Next, match given author to any known aliases and return the canonical name
+    Last, return the input author if no match is found among the aliases.
     """
+
+    # Check for ORCID format
+    # If the input author is in the format of an ORCID (e.g., 0000-0001-6888-1404), 
+    # it returns the input directly, assuming it's already canonical.
     if re.match(r"^\d{4}-\d{4}-\d{4}-\d{4}$", author):  # Check for ORCID format
         if logger:
-            logger.info(f"Processing ORCID: {author}")
+            logger.info(f"Processing ORCID: {author}.")
         return author  # Return ORCID directly
 
+    # Search for the author in the aliases
+    # For other inputs, it loops through all canonical authors and their aliases in ALIAS_MAPPING:
+    # - If the input matches any alias, it returns the corresponding canonical name.
+    # - If the input matches a canonical name directly, it also returns the canonical name.
+    # - If no match is found, it returns the input author as is.
+    
     for canonical, aliases in ALIAS_MAPPING.items():
         if logger:
             logger.debug(f"Checking aliases for canonical '{canonical}': {aliases}")
         if author in aliases:
             if logger:
-                logger.info(f"Matched alias '{author}' to canonical author '{canonical}'.")
+                logger.debug(f"> Matched author alias given, '{author}', to the canonical author: '{canonical}'.")
             return canonical
-        if author == canonical:
+        if author == canonical: # Exact match with a canonical name
             if logger:
-                logger.info(f"Matched canonical author '{author}'.")
+                logger.debug(f"> Alias given is the canonical author: '{author}'.")
             return canonical
-
+    
+    # Fallback: return the input author if no match is found among the known aliases
     if logger:
-        logger.warning(f"No match found for author '{author}'. Returning as is.")
+        logger.warning(f"> No match among aliases found for author '{author}'. Returning as is. Note: usually this means the author is not in the ALIAS_MAPPING; depending on the use-case, this is normally not an issue to worry about (you can add more aliases if you want).")
     return author
-
 
 # Fetch publication detailss
 def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, end_year=None):
@@ -783,11 +805,25 @@ def add_table_to_doc(doc, data, headers, title):
     headers: List of column headers.
     title: Title for the table.
     """
-    doc.add_heading(title, level=2)
-    table = doc.add_table(rows=1, cols=len(headers))
-    for idx, header in enumerate(headers):
-        table.rows[0].cells[idx].text = header
 
+    # Access the document's styles
+    styles = doc.styles
+
+    heading3_style = styles['Heading 3']
+    heading3_style.font.name = 'Helvetica'
+    heading3_style.font.size = Pt(11)
+    heading3_style.font.color.rgb = RGBColor(89,90,92)  # Custom color (RGB) 89,90,92 Grey - Uithof Color
+
+    # Add the title for the table
+    doc.add_paragraph(title, style='Heading 3')
+
+    # Create the table with headers
+    table = doc.add_table(rows=1, cols=len(headers))
+    hdr_cells = table.rows[0].cells
+    for idx, header in enumerate(headers):
+        hdr_cells[idx].text = header
+
+    # Add data rows
     for row in data:
         # Skip empty or malformed rows
         if not row or len(row) != len(headers):
@@ -795,6 +831,8 @@ def add_table_to_doc(doc, data, headers, title):
         row_cells = table.add_row().cells
         for idx, item in enumerate(row):
             row_cells[idx].text = str(item)
+    
+    # Add a blank paragraph for spacing after the table
     doc.add_paragraph()
 
 # Write results to Word
@@ -805,6 +843,7 @@ def write_to_word(author_data, output_base_name, results_dir, logger, args):
     logger.info("Writing results to Word document.")
     # output_file = f"{datetime.now().strftime('%Y%m%d')}_{output_file}"  # Add date to the filename
     query_date = datetime.now().strftime('%Y-%m-%d')
+    query_year = datetime.now().year
     query_quarter = (datetime.now().month - 1) // 3 + 1
     document = Document()
 
@@ -822,34 +861,152 @@ def write_to_word(author_data, output_base_name, results_dir, logger, args):
     except Exception as e:
         logger.error(f"Could not add logo to Word document: {e}")
 
-    # Add main content to the document
-    document.add_heading(f"Publications for {query_quarter} at the Central Diagnostics Laboratory", level=1)
-    document.add_paragraph(f"This document summarizes the publications linked to the Central Diagnostics Laboratory (CDL) at the University Medical Center Utrecht (UMCU).")
-    document.add_paragraph()
-    document.add_paragraph(f"The following settings are used:")
-    document.add_paragraph(f"* Query date: {query_date}.")
-    document.add_paragraph(f"* Authors: {', '.join(author_data.keys())}.")
-    document.add_paragraph(f"* Aliases used: {', '.join(ALIAS_MAPPING.keys())}.")
-    document.add_paragraph(f"* Year range: {args.year}." if args.year else "* No year filter used.")
-    document.add_paragraph(f"* Department(s): {', '.join(DEFAULT_DEPARTMENTS)}.")
-    document.add_paragraph(f"* Organization: {DEFAULT_ORGANIZATION}.")
-    document.add_paragraph()
-    document.add_paragraph(f"Results saved on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.")
-    document.add_paragraph(f"Log file saved to {os.path.join(results_dir, f'{query_date}_CDL_UMCU_Publications.log')}.")
-    document.add_paragraph()
-    document.add_paragraph(f"{VERSION_NAME} v{VERSION} ({VERSION_DATE}).")
-    document.add_paragraph(f"{COPYRIGHT}")
-    document.add_paragraph()
-    document.add_paragraph(f"GitHub repository: https://github.com/swvanderlaan/PubMed_Miner. \nAny issues or requests? Create one here: https://github.com/swvanderlaan/PubMed_Miner/issues.")
+    # Access the document's styles
+    styles = document.styles
 
+    # Set the font for the Normal style (base for most text)
+    normal_style = styles['Normal']
+    normal_style.font.name = 'Helvetica'
+    normal_style.font.size = Pt(11)  # Optional: set default font size
+
+    # Set the font for Title, Heading, and other styles
+    title_style = styles['Title']
+    title_style.font.name = 'Helvetica'
+    title_style.font.size = Pt(24)
+    title_style.font.color.rgb = RGBColor(18, 144, 217)  # Custom color (RGB) 18,144,217 Azurblue - Uithof Color
+
+    subtitle_style = styles['Subtitle']
+    subtitle_style.font.name = 'Helvetica'
+    subtitle_style.font.size = Pt(18)
+    subtitle_style.font.color.rgb = RGBColor(19, 150, 216)  # Custom color (RGB) 19,150,216 Light Azurblue - Uithof Color
+
+    heading1_style = styles['Heading 1']
+    heading1_style.font.name = 'Helvetica'
+    heading1_style.font.size = Pt(14)
+    heading1_style.font.color.rgb = RGBColor(47,139,201)  # Custom color (RGB) 47,139,201 Skyblue - Uithof Color
+
+    heading2_style = styles['Heading 2']
+    heading2_style.font.name = 'Helvetica'
+    heading2_style.font.size = Pt(12)
+    heading2_style.font.color.rgb = RGBColor(21,166,193)  # Custom color (RGB) 21,166,193 Greenblue - Uithof Color
+
+    heading3_style = styles['Heading 3']
+    heading3_style.font.name = 'Helvetica'
+    heading3_style.font.size = Pt(11)
+    heading3_style.font.color.rgb = RGBColor(89,90,92)  # Custom color (RGB) 89,90,92 Grey - Uithof Color
+
+    bullet_style = styles['List Bullet']
+    bullet_style.font.name = 'Helvetica'
+    bullet_style.font.size = Pt(11)
+
+    bullet2_style = styles['List Bullet 2']
+    bullet2_style.font.name = 'Helvetica'
+    bullet2_style.font.size = Pt(11)
+
+    # Add document meta data
+    document.core_properties.title = f"Publications for {query_year}-Q{query_quarter}"
+    document.core_properties.author = f"{COPYRIGHT_AUTHOR}"
+    document.core_properties.comments = f"{VERSION_NAME} v{VERSION} ({VERSION_DATE})"
+
+    # Add main content to the document
+    # Add title and subtitle
+    document.add_paragraph(f"Publications for {query_year}-Q{query_quarter}", style='Title')
+    document.add_paragraph(
+        f"Summarizing publications from {DEFAULT_DEPARTMENTS} at {DEFAULT_ORGANIZATION}.", 
+        style='Subtitle'
+    )
+
+    # Add a heading
+    document.add_paragraph("Introduction", style='Heading 1')
+
+    # Add the introductory paragraph
+    document.add_paragraph(
+        (
+            "This report was created using PubMed Miner, a tool to retrieve and analyze publication data from PubMed. "
+            "In short, the script mines PubMed through the Entrez API, retrieves the data, and analyzes it to provide insights "
+            "into the publications of the CDL.\n"
+            "It uses the given author names, departments, and organization to filter the results. In this version, a few "
+            "default authors, departments, organizations, and their aliases are provided. If you think this list is incomplete, please "
+            "contact us and we will add your name. Nowadays, PubMed also stores the OrcID for a given author, so you can also use this to identify "
+            "authors.\n"
+            "For our purposes, we are interested in the output for a given year, which can be indicated by the flag `--year`, "
+            "for example, `--year 2024`. Alternatively, you could query within a certain timeframe, for example `--year 2022-2024`. "
+            "You can also omit this flag, and it will mine PubMed for any publication across all years. Note that the latter "
+            "would significantly slow down the process, especially when multiple authors are given."
+            "Note that you have to use the `--email` flag to provide your email address for the Entrez API. This is required "
+            "to access PubMed data. If you do not provide this, the script will not run. This email is only used by PubMed to "
+            "log the queries, it is not used for the actual query.\n"
+            "Lastly, the script will save the results in a Word document and an Excel file. The Word document will contain the "
+            "main publications and preprints for each author, as well as summary tables for the number of publications per author, "
+            "per year, per year per journal, and per publication type. The Excel file will contain the same data but in separate "
+            "sheets for each type of data. The Excel file will also contain the raw data for the publications and preprints. The "
+            "plots are also saved in the results directory. In addition, the script will log the results and any errors in a log "
+            "file, which will be saved in the results directory."
+
+        ), 
+        style='Normal'
+    )
+
+    # Add a main heading
+    document.add_paragraph("The following settings are used:", style='Normal')
+
+    # Add the first-level bullets
+    document.add_paragraph(f"Query date: {query_date}.", style="List Bullet")
+    document.add_paragraph(f"Authors: {', '.join(author_data.keys())}.", style="List Bullet")
+
+    # Add a second-level bullet for "Author aliases used" only if the user provided author are in the default list
+    if set(author_data.keys()) == set(DEFAULT_NAMES):
+        document.add_paragraph(f"Author aliases used: {', '.join(ALIAS_MAPPING.keys())}.", style="List Bullet 2")
+    else:
+        document.add_paragraph(f"No author aliases known.", style="List Bullet 2")
+
+    # Continue with first-level bullets
+    document.add_paragraph(f"Year range: {args.year}." if args.year else "No year filter used.", style="List Bullet")
+    document.add_paragraph(f"Department(s): {args.departments}.", style="List Bullet")
+
+    # Add a second-level bullet for "Department aliases used" only if the user provided departments are in the default list
+    if args.departments == DEFAULT_DEPARTMENTS:
+        document.add_paragraph(f"Department aliases used: {', '.join(DEPARTMENT_ALIAS_MAPPING.keys())}.", style="List Bullet 2")
+    else:
+        document.add_paragraph(f"No department aliases known.", style="List Bullet 2")
+
+    # Continue with first-level bullets
+    document.add_paragraph(f"Organization(s): {args.organization}.", style="List Bullet")
+
+    # Add a second-level bullet for "Organization aliases used" only if the user provided organization is the default
+    if args.organization == DEFAULT_ORGANIZATION:
+        document.add_paragraph(f"Organization aliases used: {', '.join(ORGANIZATION_ALIAS_MAPPING.keys())}.", style="List Bullet 2")
+    else:
+        document.add_paragraph(f"No organization aliases known.", style="List Bullet 2")
+
+    # Add Document Summary
+    document.add_paragraph("Summary", style='Heading 1')
+    document.add_paragraph(
+        f"Total authors processed: {len(author_data)}\n"
+        f"Total publications: {sum(len(data[0]) for data in author_data.values())}\n"
+        f"Total preprints: {sum(len(data[1]) for data in author_data.values())}",
+        style='Normal'
+    )
+    document.add_paragraph()
+    document.add_paragraph(f"Results saved on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.", style='Normal')
+    document.add_paragraph(f"Log file saved to {os.path.join(results_dir, f'{output_base_name}.log')}.", style='Normal')
+    document.add_paragraph()
+    document.add_paragraph(f"{VERSION_NAME} v{VERSION} ({VERSION_DATE}).", style='Normal')
+    document.add_paragraph(f"{COPYRIGHT}", style='Normal')
+    document.add_paragraph()
+    document.add_paragraph(f"GitHub repository: https://github.com/swvanderlaan/PubMed_Miner. \nAny issues or requests? Create one here: https://github.com/swvanderlaan/PubMed_Miner/issues.", style='Normal')
+
+    # Add a heading for the results
+    document.add_paragraph("Results", style='Heading 1')
     # Add results for each canonical author
     logger.info(f"> Adding results for {len(author_data)} author(s).")
     for canonical_author, (publications, preprints, author_count, year_count, author_year_count, year_journal_count, pub_type_count) in author_data.items():
-        document.add_heading(f"Author: {canonical_author}", level=1)
+        # Add a heading for the author
+        document.add_paragraph(f"Author: {canonical_author}", style='Heading 2')
 
         # Main publications and preprints for this author
         if publications:
-            logger.info(f"Adding {len(publications)} publications for {canonical_author}.")
+            logger.info(f"> Adding {len(publications)} publication(s) for {canonical_author}.")
             
             # Debugging: Check structure of publications
             logger.debug(f"Publications for {canonical_author}: {publications[:3]}")  # Log first 3 publications
@@ -862,6 +1019,7 @@ def write_to_word(author_data, output_base_name, results_dir, logger, args):
             if not valid_publications:
                 logger.warning(f"No valid publications found for {canonical_author}. Check data structure.")
             else:
+                logger.debug(f"Added {len(valid_publications)} valid publication(s) for {canonical_author}.")
                 add_table_to_doc(
                     document,
                     valid_publications,
@@ -872,7 +1030,7 @@ def write_to_word(author_data, output_base_name, results_dir, logger, args):
             logger.warning(f"No publications found for {canonical_author}.")
 
         if preprints:
-            logger.info(f"Adding {len(preprints)} preprints for {canonical_author}.")
+            logger.info(f"> Adding {len(preprints)} preprint(s) for {canonical_author}.")
             
             # Debugging: Check structure of preprints
             logger.debug(f"Raw Preprints for {canonical_author}: {preprints}")
@@ -885,7 +1043,7 @@ def write_to_word(author_data, output_base_name, results_dir, logger, args):
             if not valid_preprints:
                 logger.warning(f"No valid preprints found for {canonical_author}. Check data structure.")
             else:
-                logger.info(f"Adding {len(valid_preprints)} valid preprints for {canonical_author}.")
+                logger.debug(f"Added {len(valid_preprints)} valid preprint(s) for {canonical_author}.")
                 add_table_to_doc(
                     document,
                     valid_preprints,
@@ -920,14 +1078,17 @@ def write_to_word(author_data, output_base_name, results_dir, logger, args):
             headers=["Publication Type", "Year", "Number of Publications"],
             title="Publication Type by Year",
         )
-
+        # Add a new page for the next author
+        document.add_page_break()
+    
+    # Add a page break and heading for the combined plotted results
+    document.add_page_break()
+    document.add_paragraph("Plots of combined results", style='Heading 1')
     # Add combined graphs after individual sections
-    logger.info("> Adding graphs for all authors.")
-    document.add_heading("Graphs", level=1)
+    logger.info("> Adding graphs for the combined results.")
     for plot_name in [
         f"{output_base_name}_publications_per_author.png",
         f"{output_base_name}_total_publications_preprints_by_author.png",
-        # f"{output_base_name}_publications_per_year.png",
         f"{output_base_name}_publications_per_year_with_moving_avg.png",
         f"{output_base_name}_publications_per_author_and_year.png",
         f"{output_base_name}_top10_journals_grouped.png",
@@ -942,6 +1103,7 @@ def write_to_word(author_data, output_base_name, results_dir, logger, args):
                 logger.error(f"Error adding plot {plot_path}: {e}")
         else:
             logger.warning(f"Plot file not found: {plot_path}")
+            document.add_paragraph(f"Plot {plot_name} not found. The actual graph-file in .png-format is not found. Double back and check. For instance, there could to little data to plot.", style="List Bullet")
 
     # Save the document
     output_path = os.path.join(results_dir, f"{output_base_name}.docx")
@@ -957,7 +1119,6 @@ def plot_results(author_data, results_dir, logger, output_base_name):
     plot_filenames = {
         "publications_per_author": f"{output_base_name}_publications_per_author.png",
         "total_publications_preprints_by_author": f"{output_base_name}_total_publications_preprints_by_author.png",
-        # "publications_per_year": f"{output_base_name}_publications_per_year.png",
         "publications_per_year_with_moving_avg": f"{output_base_name}_publications_per_year_with_moving_avg.png",
         "publications_per_author_and_year": f"{output_base_name}_publications_per_author_and_year.png",
         "top10_journals_grouped": f"{output_base_name}_top10_journals_grouped.png",
@@ -1235,10 +1396,10 @@ def main():
     logger.info(f"  - organization: ['{args.organization}']")
     logger.info(f"  - filtering by year (range) [{args.year}]" if args.year else "  - no year filter used.")
     logger.info(f"  - output file(s): [{output_base_name}]")
-    logger.info(f"> PubMed email used: {args.email}.")
+    logger.info(f"> PubMed email used: {args.email}. Note that this is only used by PubMed to log the queries, it is not used for the actual query.")
     logger.info(f"> Debug mode: {'On' if args.debug else 'Off'}.")
     logger.info(f"> Verbose mode: {'On' if args.verbose else 'Off'}.\n")
-
+    
     author_data = {}
     logger.info(f"Querying PubMed for publications and preprints.\n")
 
@@ -1256,24 +1417,24 @@ def main():
             for alias in canonical_author_aliases
         )
 
-        logger.info(f"Searching PubMed for canonical author '{canonical_author}' with aliases: {canonical_author_aliases}.")
+        logger.debug(f"Searching PubMed for canonical author '{canonical_author}' with aliases: {canonical_author_aliases}.")
 
         for department in args.departments:
             # Retrieve department aliases
             department_aliases = DEPARTMENT_ALIAS_MAPPING.get(department, [department])
             department_query = " OR ".join(f'({alias}[Affiliation])' for alias in department_aliases)
 
-            logger.info(f"> Using department '{department}' with aliases: {department_aliases}.")
+            logger.debug(f"> Using department '{department}' with aliases: {department_aliases}.")
 
             # Retrieve organization aliases
             organization_aliases = ORGANIZATION_ALIAS_MAPPING.get(args.organization, [args.organization])
             organization_query = " OR ".join(f'({alias})' for alias in organization_aliases)
 
-            logger.info(f"> Using organization '{args.organization}' with aliases: {organization_aliases}.")
+            logger.debug(f"> Using organization '{args.organization}' with aliases: {organization_aliases}.")
 
             # Construct the full search query
             search_query = f"(({author_query}) AND ({department_query})) AND ({organization_query})"
-            logger.info(f"Constructed PubMed search query: {search_query}")
+            logger.debug(f"Constructed PubMed search query: {search_query}")
 
             try:
                 record = fetch_with_retry(db="pubmed", term=search_query)
