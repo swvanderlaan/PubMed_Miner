@@ -7,6 +7,7 @@ import argparse
 import logging
 import subprocess
 import importlib
+import time
 from datetime import datetime
 from Bio import Entrez
 from collections import defaultdict
@@ -18,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 # Change log:
+# * v1.1.0, 2024-11-18: Fixed an issue where not all the aliases for --names, --departments and --organization were properly queried in conjunction with --organization. Added an option to include ORCID in the author alias list. Fixed issue where the moving average plot might not handle edge years (with fewer than moving_avg_window data points) gracefully.
 # * v1.0.10, 2024-11-15: Fixed an issue with consistency of filenaming. Added moving average per author per year to barplot.
 # * v1.0.9, 2024-11-15: Fixed an issue with the dimensions of the preprint and publication tables.
 # * v1.0.8, 2024-11-15: Fixed issue with aliases for departments. Also edit option to include more departments to search for. Fixed handling authors. Fixed output of preprint citation. 
@@ -32,8 +34,8 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.0.10'
-VERSION_DATE = '2024-11-15'
+VERSION = '1.1.0'
+VERSION_DATE = '2024-11-18'
 COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
 Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International Public License
@@ -45,67 +47,84 @@ Full license text available at https://creativecommons.org/licenses/by-nc-nd/4.0
 This software is provided "as is" without warranties or guarantees of any kind.
 '''
 
-# Alias mapping for handling multiple author names
+# Alias mapping for handling multiple author names and ORCID
 ALIAS_MAPPING = {
     "van der Laan SW": [
+        "van der Laan SW",
         "van der Laan S", 
-        "van der Laan S.W.", 
-        "van der Laan Sander W.", 
-        "Sander W. van der Laan", 
+        "van der Laan, Sander W",
+        "van der Laan Sander W",
+        "van der Laan, Sander",
+        "van der Laan Sander",
         "Sander van der Laan", 
-        "Sander W van der Laan"
+        "0000-0001-6888-1404",
+        # Add other aliases as needed
     ],
     "Pasterkamp G": [
-        "Gerard Pasterkamp"
+        "Pasterkamp G",
+        "Gerard Pasterkamp",
+        # Add other aliases as needed
     ],
     "Mokry M": [
-        "Michal Mokry"
+        "Mokry M",
+        "Michal Mokry",
+        # Add other aliases as needed
     ],
     "Schiffelers RM": [
+        "Schiffelers RM",
         "Schiffelers R", 
         "Raymond M. Schiffelers", 
         "Raymond Schiffelers", 
         "R. Schiffelers", 
         "R Schiffelers", 
-        "Raymond M Schiffelers"
+        "Raymond M Schiffelers",
+        # Add other aliases as needed
     ],
     "van Solinge W": [
+        "van Solinge W",
         "van Solinge WW", 
         "van Solinge W.W.", 
         "Wouter W. van Solinge", 
-        "Wouter van Solinge"
+        "Wouter van Solinge",
+        # Add other aliases as needed
     ],
     "Haitjema S": [
-        "Haitjema S.",
+        "Haitjema S",
         "Saskia Haitjema",
-        "S. Haitjema",
         "S Haitjema",
+        # Add other aliases as needed
     ],
     "den Ruijter HM": [
-        "Hester M. den Ruijter", 
+        "den Ruijter HM",
         "Hester M den Ruijter", 
-        "Hester den Ruijter"
+        "Hester den Ruijter",
+        # Add other aliases as needed
     ],
     "Hoefer IE": [
-        "Hofer I", 
-        "Hoefer I.E.", 
-        "Hoefer I.", 
-        "Imo E. Hofer", 
-        "Imo Hofer", 
-        "Imo E. Hoefer", 
+        "Hoefer IE",
         "Imo E Hoefer", 
-        "Imo Hoefer"
+        "I Hoefer",
+        "IE Hoefer",
+        "Imo Hoefer",
+        "Hofer I", 
+        "I Hofer",
+        "Imo Hofer", 
+        # Add other aliases as needed
     ],
     "Schoneveld AH": [
-        "Schoneveld A.H.", 
-        "Schoneveld A.", 
-        "Arjen H. Schoneveld", 
+        "Schoneveld AH", 
+        "Schoneveld A", 
         "Arjen H Schoneveld", 
-        "Arjen Schoneveld"
+        "Arjen Schoneveld",
+        "Schoneveld Arjen",
+        # Add other aliases as needed
     ],
     "Vader P": [
-        "P. Vader", 
-        "Pieter Vader"
+        "Vader P",
+        "P Vader", 
+        "Pieter Vader",
+        "Vader Pieter"
+        # Add other aliases as needed
     ],
     # Add other aliases as needed
 }
@@ -113,20 +132,47 @@ ALIAS_MAPPING = {
 # Departement mapping for handling multiple department names
 DEPARTMENT_ALIAS_MAPPING = {
     "Central Diagnostic Laboratory": [
+        "Central Diagnostic Laboratory",
         "CDL",
         "CDL Research",
         "Central Diagnostics Laboratory",
+        "Central Diagnostics Laboratory Research",
+        "Central Diagnostic Laboratory, Division Laboratories, Pharmacy, and Biomedical genetics",
+        "Central Diagnostics Laboratory, Division Laboratories, Pharmacy, and Biomedical genetics"
+        "Central Diagnostic Laboratory, Division Laboratory, Pharmacy, and Biomedical genetics",
+        "Laboratory of Clinical Chemistry and Hematology, Division Laboratories and Pharmacy",
+        "Laboratory of Clinical Chemistry and Hematology, Division Laboratories & Pharmacy",
+        "Laboratory of Clinical Chemistry and Hematology",
+        "Laboratory Clinical Chemistry and Hematology",
         # Add other aliases as needed
     ],
     # Add other departments as needed
     "Laboratory of Experimental Cardiology": [
+        "Laboratory of Experimental Cardiology",
+        "Laboratory Experimental Cardiology",
         "Lab of Experimental Cardiology",
         "Experimental Cardiology",
         "Experimental Cardiology Lab",
         "Experimental Cardiology Laboratory",
+        "Laboratory of Experimental Cardiology, Division Heart and Lungs"
+        "Laboratory of Experimental Cardiology, Division of Heart and Lungs",
         # Add other aliases as needed
     ]
 }
+
+# Organization mapping for handling multiple organization names
+ORGANIZATION_ALIAS_MAPPING = {
+    "University Medical Center Utrecht": [
+        "University Medical Center Utrecht",
+        "University Medical Center Utrecht, Utrecht University",
+        "UMCU",
+        "UMC Utrecht",
+        "University Medical Centre Utrecht",
+        "Universitair Medisch Centrum Utrecht",
+        # Add other aliases as needed
+    ]
+}
+
 # Set some defaults
 DEFAULT_ORGANIZATION = "University Medical Center Utrecht"
 DEFAULT_NAMES = ["van der Laan SW", 
@@ -139,16 +185,13 @@ DEFAULT_NAMES = ["van der Laan SW",
 "Hoefer IE",
 "Schoneveld AH",
 "Vader P"]
-# DEFAULT_DEPARTMENTS = ["Central Diagnostic Laboratory", "Laboratory of Experimental Cardiology"]
-DEFAULT_DEPARTMENTS = ["Central Diagnostic Laboratory"]
+DEFAULT_DEPARTMENTS = ["Central Diagnostic Laboratory", "Laboratory of Experimental Cardiology"]
 
 # Setup Logging
 def setup_logger(results_dir, output_base_name, verbose, debug):
     """
     Setup the logger to log to a file and console.
     """
-    # date_str = datetime.now().strftime('%Y%m%d')
-    # log_file = os.path.join(results_dir, f"{date_str}_CDL_UMCU_Publications.log")
     log_file = os.path.join(results_dir, f"{output_base_name}.log")
     
     os.makedirs(results_dir, exist_ok=True)
@@ -187,6 +230,17 @@ def check_install_package(package_name, logger):
         logger.info(f'{package_name} is not installed. Installing it now...')
         subprocess.check_call(['pip', 'install', package_name])
 
+# Normalize text -- needed for validation_results (could be used elsewhere too)
+def normalize_text(text):
+    """
+    Normalize text for comparison: lowercase, remove punctuation, and normalize spaces.
+    """
+    import re
+    text = text.lower()  # Lowercase
+    text = re.sub(r'[^\w\s,\.]', '', text)  # Remove punctuation except commas/periods
+    text = re.sub(r'\s+', ' ', text).strip()  # Normalize spaces
+    return text.strip()
+
 # Retry logic for API calls
 def fetch_with_retry(db, term, retries=3, backoff=2):
     """
@@ -201,6 +255,58 @@ def fetch_with_retry(db, term, retries=3, backoff=2):
                 time.sleep(backoff ** attempt)
                 continue
             raise e
+# Retry logic for API calls -- needed in validation_results using medline format
+def fetch_validation_with_retry(db, term, retries=3, backoff=2):
+    """
+    Fetch PubMed data with retry logic to handle rate limits or network issues.
+    """
+    for attempt in range(retries):
+        try:
+            handle = Entrez.efetch(db=db, id=term, rettype="medline", retmode="text")
+            record = handle.read()  # Retrieve the MEDLINE format text
+            handle.close()
+            if not record:  # Check if the record is empty
+                logging.warning(f"No record returned for term [{term}] on attempt {attempt + 1}.")
+                continue
+            return record  # Return the record as a string
+        except Exception as e:
+            logging.error(f"Attempt {attempt + 1} failed for term [{term}]: {e}")
+            if attempt < retries - 1:
+                time.sleep(backoff ** attempt)  # Exponential backoff
+    logging.error(f"Failed to fetch data for term [{term}] after {retries} attempts.")
+    return None  # Return None if all retries fail
+
+# Extract affiliations -- needed in validation_results
+def extract_affiliations(record):
+    """
+    Extract all affiliations (AD fields) from a MEDLINE record, accounting for multi-line entries.
+    """
+    affiliations = []
+    lines = record.splitlines()
+
+    # Flag to track if we're in an "AD" block
+    in_ad_block = False
+    current_affiliation = ""
+
+    for line in lines:
+        if line.startswith("AD  - "):  # Start of a new affiliation
+            if current_affiliation:  # If there's an ongoing affiliation, save it
+                affiliations.append(current_affiliation.strip())
+            current_affiliation = line[6:]  # Strip "AD  - " prefix
+            in_ad_block = True
+        elif in_ad_block and line.startswith("      "):  # Continuation line for "AD"
+            current_affiliation += " " + line.strip()  # Append the continuation
+        else:
+            if in_ad_block:  # End of "AD" block
+                affiliations.append(current_affiliation.strip())
+                current_affiliation = ""
+                in_ad_block = False
+
+    # Catch any remaining affiliation
+    if current_affiliation:
+        affiliations.append(current_affiliation.strip())
+
+    return " ".join(affiliations)  # Combine into a single string
 
 # Parse year or year range
 def parse_year_range(year_range_str):
@@ -229,7 +335,7 @@ Required arguments:
     -e, --email <email-address>  Email address for PubMed API access.
 
 Optional arguments:
-    -n, --names <names>          List of (main) author names to search for. 
+    -n, --names <names>          List of (main) author names to search for. Could also be an ORCID.
                                  Default: {DEFAULT_NAMES} with these aliases: {ALIAS_MAPPING}.
     -dep, --departments <depts>  List of departments to search for. Default: {DEFAULT_DEPARTMENTS}.
     -org, --organization <org>   Organization name for filtering results. Default: {DEFAULT_ORGANIZATION}.
@@ -246,7 +352,7 @@ Example:
 {COPYRIGHT_TEXT}""",
         formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("-e", "--email", required=True, help="Email for PubMed API access.")
-    parser.add_argument("-n", "--names", nargs='+', default=DEFAULT_NAMES, help="List of (main) author names to search for.")
+    parser.add_argument("-n", "--names", nargs='+', default=DEFAULT_NAMES, help="List of (main) author names or ORCIDs to search for.")
     parser.add_argument("-dep", "--departments", nargs='+', default=DEFAULT_DEPARTMENTS, help="List of departments to search for.")
     parser.add_argument("-org", "--organization", default=DEFAULT_ORGANIZATION, help="Organization name for filtering results.")
     parser.add_argument("-y", "--year", help="Filter publications by year or year range (e.g., 2024 or 2017-2024).")
@@ -260,18 +366,29 @@ Example:
 # Get canonical author name
 def get_canonical_author(author, logger=None):
     """
-    Get the canonical author name from the ALIAS_MAPPING.
+    Get the canonical author name or ORCID from the ALIAS_MAPPING.
     """
+    if re.match(r"^\d{4}-\d{4}-\d{4}-\d{4}$", author):  # Check for ORCID format
+        if logger:
+            logger.info(f"Processing ORCID: {author}")
+        return author  # Return ORCID directly
+
     for canonical, aliases in ALIAS_MAPPING.items():
         if logger:
-            logger.debug(f"Checking aliases for '{canonical}': {aliases}")
-        if author in aliases or author == canonical:
+            logger.debug(f"Checking aliases for canonical '{canonical}': {aliases}")
+        if author in aliases:
             if logger:
-                logger.info(f"Matched '{author}' to canonical author '{canonical}'.")
+                logger.info(f"Matched alias '{author}' to canonical author '{canonical}'.")
             return canonical
+        if author == canonical:
+            if logger:
+                logger.info(f"Matched canonical author '{author}'.")
+            return canonical
+
     if logger:
         logger.warning(f"No match found for author '{author}'. Returning as is.")
     return author
+
 
 # Fetch publication detailss
 def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, end_year=None):
@@ -304,8 +421,20 @@ def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, 
             continue  # Skip this ID if all retries failed
 
         # Extract publication details
-        authors = re.findall(r"AU  - (.+)", record) or []
-        authors = [get_canonical_author(author) for author in authors]  # Replace aliases with canonical names
+        authors = re.findall(r"AU  - (.+)", record) or []  # Short author list
+        full_authors = re.findall(r"FAU - (.+)", record) or []  # Full author list
+        author_ids = re.findall(r"AUID- (.+)", record) or []  # Author identifiers (e.g., ORCID)
+
+        # Replace aliases with canonical names for `AU` and `FAU` fields
+        authors = [get_canonical_author(author) for author in authors]
+        full_authors = [get_canonical_author(author) for author in full_authors]
+
+        # Combine `AU`, `FAU`, and `AUID` into a single list for alias matching
+        all_author_data = set(authors + full_authors + author_ids)
+
+        # Check if the canonical author or any alias matches
+        author_match = any(alias in all_author_data for alias in all_author_data)
+
         title = re.search(r"TI  - (.+)", record).group(1) if re.search(r"TI  - (.+)", record) else "No title found"
         journal_abbr = re.search(r"TA  - (.+)", record).group(1) if re.search(r"TA  - (.+)", record) else "No journal abbreviation found"
         # Extract Journal ID with debugging print
@@ -411,6 +540,68 @@ def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, 
         # logger.debug(f"This was the full record:\n{record}")
 
     return publications, preprints
+
+# Filter results to ensure all criteria are met
+def validate_results(pubmed_ids, logger, author_aliases, department_aliases, organization_aliases):
+    """
+    Filter the PubMed IDs based on author aliases, department aliases, and organization aliases.
+    """
+    filtered_ids = set()
+    for pub_id in pubmed_ids:
+        logger.debug(f"Processing PubMed ID {pub_id}.")
+        record = fetch_validation_with_retry(db="pubmed", term=pub_id)  # Fetch detailed record
+        
+        if not record:  # Check if the record is None or invalid
+            logger.warning(f"PubMed ID {pub_id} returned no data. Skipping.")
+            continue
+
+        if not isinstance(record, str):
+            logger.error(f"Unexpected record format for PubMed ID {pub_id}: {type(record)}. Skipping.")
+            continue
+
+        # Extract authors and affiliations
+        authors = re.findall(r"AU  - (.+)", record) or []  # Short author list
+        logger.debug(f"> Authors: {authors}")
+        # Normalize author names
+        authors = [normalize_text(author) for author in authors]
+        # Normalize author aliases for comparison
+        normalized_author_aliases = [normalize_text(alias) for alias in author_aliases]
+        logger.debug(f"> Author aliases (normalized): {normalized_author_aliases}")
+
+        # Checking for affiliation match        
+        affiliations = extract_affiliations(record)
+        logger.debug(f"> Affiliations: {affiliations}")
+        # Normalize affiliations
+        affiliations = normalize_text(" ".join(re.findall(r"AD  - (.+)", record)))
+        logger.debug(f"> Affiliations (normalized): {affiliations}")
+
+        # Normalize department aliases
+        logger.debug(f"> Department aliases: {department_aliases}")
+        normalized_department_aliases = [normalize_text(alias) for alias in department_aliases]
+        logger.debug(f"> Department aliases (normalized): {normalized_department_aliases}")
+
+        # Normalize organization aliases
+        logger.debug(f"> Organization aliases: {organization_aliases}")
+        normalized_organization_aliases = [normalize_text(alias) for alias in organization_aliases]
+        logger.debug(f"> Organization aliases (normalized): {normalized_organization_aliases}")
+
+        # Check for matching author alias
+        author_match = any(alias in authors for alias in normalized_author_aliases)
+        logger.debug(f"> Author match: {author_match}")
+
+        # Check for matches
+        dept_match = any(alias in affiliations for alias in normalized_department_aliases)
+        logger.debug(f"> Department match: {dept_match}")
+
+        org_match = any(alias in affiliations for alias in normalized_organization_aliases)
+        logger.debug(f"> Organization match: {org_match}")
+
+        if author_match and dept_match and org_match:
+            filtered_ids.add(pub_id)
+        else:
+            logger.debug(f"PubMed ID {pub_id} did not meet all criteria and was excluded.")
+    
+    return filtered_ids
 
 # Analyze publication data
 def analyze_publications(publications_data, main_author, logger):
@@ -872,8 +1063,12 @@ def plot_results(author_data, results_dir, logger, output_base_name):
             alpha=0.8,
         )
 
-        # Calculate the moving average
-        moving_avg = np.convolve(counts, np.ones(moving_avg_window) / moving_avg_window, mode='valid')
+        # Calculate the moving average (adjust at edges)
+        moving_avg = []
+        for i in range(len(counts)):
+            window_start = max(0, i - moving_avg_window + 1)
+            window = counts[window_start:i + 1]
+            moving_avg.append(sum(window) / len(window))
 
         # Plot the moving average line
         ax.plot(
@@ -1012,7 +1207,6 @@ def main():
     today = datetime.now().strftime('%Y%m%d')
 
     # File base naming convention
-    # output_file = os.path.join(results_dir, f"{today}_{args.output_file}")
     base_name = args.output_file if args.output_file else "CDL_UMCU_Publications"
     output_base_name = f"{today}_{base_name}"
     
@@ -1047,26 +1241,77 @@ def main():
     author_data = {}
     logger.info(f"Querying PubMed for publications and preprints.\n")
 
-    # Iterate through all authors
+    # Collect all PubMed IDs for the given author(s)
+    all_pubmed_ids = set()  # Use a set to collect unique IDs
     for main_author in args.names:
+        # Retrieve the canonical author and their aliases
         canonical_author = get_canonical_author(main_author, logger)
-        logger.info(f"Searching PubMed for canonical author '{canonical_author}' with aliases: {ALIAS_MAPPING.get(canonical_author, [])}")
+        canonical_author_aliases = ALIAS_MAPPING.get(canonical_author, [canonical_author])
 
-        all_pubmed_ids = []
+        # # Check if the input is an ORCID
+        # if re.match(r"^\d{4}-\d{4}-\d{4}-\d{4}$", canonical_author):
+        #     logger.info(f"Detected ORCID: {canonical_author}")
+        #     author_query = f'({canonical_author}[AUID])'
+        # else:
+        #     author_query = " OR ".join(f'({alias}[Author])' for alias in canonical_author_aliases)
+
+        # Construct the author query based on whether it's an ORCID
+        author_query = " OR ".join(
+            f'({alias}[Author - Identifier])' if re.match(r"^\d{4}-\d{4}-\d{4}-\d{4}$", alias)
+            else f'({alias}[Author])'
+            for alias in canonical_author_aliases
+        )
+
+        logger.info(f"Searching PubMed for canonical author '{canonical_author}' with aliases: {canonical_author_aliases}.")
+
         for department in args.departments:
-            # Use aliases for departments
-            department_aliases = DEPARTMENT_ALIAS_MAPPING.get(department, [department])  # Get aliases or use the original
-            
-            # Iterate through all aliases for the department
-            for dept_alias in department_aliases:
-                search_query = f"{main_author} {dept_alias} {args.organization}"
-                logger.info(f"Querying PubMed for [ {search_query} ]\n")
-                try:
-                    record = fetch_with_retry(db="pubmed", term=search_query)
-                    all_pubmed_ids.extend(record["IdList"])
-                except Exception as e:
-                    logger.error(f"Failed to fetch PubMed IDs for query [{search_query}]: {e}")
+            # Retrieve department aliases
+            department_aliases = DEPARTMENT_ALIAS_MAPPING.get(department, [department])
+            department_query = " OR ".join(f'({alias}[Affiliation])' for alias in department_aliases)
+
+            logger.info(f"> Using department '{department}' with aliases: {department_aliases}.")
+
+            # Retrieve organization aliases
+            organization_aliases = ORGANIZATION_ALIAS_MAPPING.get(args.organization, [args.organization])
+            organization_query = " OR ".join(f'({alias})' for alias in organization_aliases)
+
+            logger.info(f"> Using organization '{args.organization}' with aliases: {organization_aliases}.")
+
+            # Construct the full search query
+            search_query = f"(({author_query}) AND ({department_query})) AND ({organization_query})"
+            logger.info(f"Constructed PubMed search query: {search_query}")
+
+            try:
+                record = fetch_with_retry(db="pubmed", term=search_query)
+                if not record:
+                    logger.error(f"No data returned for query [{search_query}]. Skipping.")
                     continue
+
+                all_pubmed_ids.update(record["IdList"])  # Add unique PubMed IDs to the set
+                # all_pubmed_ids.update(record.splitlines())  # Add unique PubMed IDs to the set
+            except Exception as e:
+                logger.error(f"Failed to fetch PubMed IDs for query [{search_query}]: {e}")
+
+        # Convert set of PubMed IDs to a sorted list (optional)
+        all_pubmed_ids = sorted(all_pubmed_ids)
+        # Log the number of unique PubMed IDs found
+        logger.info(f"Found {len(all_pubmed_ids)} unique publications for author '{canonical_author}'.")
+        
+        # Validate the results to ensure all criteria are met 
+        # INFORMATION -- this is not fully implemented yet, because the validation yields very low results
+        # for now, we will skip this step when processing all_pubmed_ids, 
+        # logger.info(f"Validating {len(all_pubmed_ids)} unique publications for [{canonical_author}].")
+        # # Make sure we list all the department and organization aliases -- not just the one we're previously iterating over
+        # validation_department_aliases = DEPARTMENT_ALIAS_MAPPING.get(department, [department])
+        # validation_organization_aliases = ORGANIZATION_ALIAS_MAPPING.get(args.organization, [args.organization])
+        # validated_pubmed_ids = validate_results(
+        #     pubmed_ids=all_pubmed_ids,
+        #     logger=logger,
+        #     author_aliases=canonical_author_aliases,
+        #     department_aliases=validation_department_aliases,
+        #     organization_aliases=validation_organization_aliases
+        # )
+        # logger.info(f"Validated PubMed IDs: {len(validated_pubmed_ids)} unique publications remain after validation.")
 
         publications, preprints = fetch_publication_details(all_pubmed_ids, logger, canonical_author, start_year, end_year)
         author_count, year_count, author_year_count, year_journal_count, pub_type_count = analyze_publications(publications, canonical_author, logger)
