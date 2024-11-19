@@ -1239,8 +1239,6 @@ def main():
     logger.info(f"> Verbose mode: {'On' if args.verbose else 'Off'}.\n")
 
     author_data = {}
-    combined_pubmed_ids = set()  # Collect all PubMed IDs across all queries
-
     logger.info(f"Querying PubMed for publications and preprints.\n")
 
     # Collect all PubMed IDs for the given author(s)
