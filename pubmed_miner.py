@@ -156,6 +156,7 @@ DEPARTMENT_ALIAS_MAPPING = {
         "Experimental Cardiology Laboratory",
         "Laboratory of Experimental Cardiology, Division Heart and Lungs"
         "Laboratory of Experimental Cardiology, Division of Heart and Lungs",
+        "Experimental Cardiology Laboratory Heart Lung Center Utrecht",
         # Add other aliases as needed
     ]
 }
