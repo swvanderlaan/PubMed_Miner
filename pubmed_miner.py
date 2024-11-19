@@ -1239,21 +1239,16 @@ def main():
     logger.info(f"> Verbose mode: {'On' if args.verbose else 'Off'}.\n")
 
     author_data = {}
+    combined_pubmed_ids = set()  # Collect all PubMed IDs across all queries
+
     logger.info(f"Querying PubMed for publications and preprints.\n")
 
     # Collect all PubMed IDs for the given author(s)
-    all_pubmed_ids = set()  # Use a set to collect unique IDs
     for main_author in args.names:
+        all_pubmed_ids = set()  # Use a set to collect unique IDs
         # Retrieve the canonical author and their aliases
         canonical_author = get_canonical_author(main_author, logger)
         canonical_author_aliases = ALIAS_MAPPING.get(canonical_author, [canonical_author])
-
-        # # Check if the input is an ORCID
-        # if re.match(r"^\d{4}-\d{4}-\d{4}-\d{4}$", canonical_author):
-        #     logger.info(f"Detected ORCID: {canonical_author}")
-        #     author_query = f'({canonical_author}[AUID])'
-        # else:
-        #     author_query = " OR ".join(f'({alias}[Author])' for alias in canonical_author_aliases)
 
         # Construct the author query based on whether it's an ORCID
         author_query = " OR ".join(
@@ -1288,14 +1283,8 @@ def main():
                     continue
 
                 all_pubmed_ids.update(record["IdList"])  # Add unique PubMed IDs to the set
-                # all_pubmed_ids.update(record.splitlines())  # Add unique PubMed IDs to the set
             except Exception as e:
                 logger.error(f"Failed to fetch PubMed IDs for query [{search_query}]: {e}")
-
-        # Convert set of PubMed IDs to a sorted list (optional)
-        all_pubmed_ids = sorted(all_pubmed_ids)
-        # Log the number of unique PubMed IDs found
-        logger.info(f"Found {len(all_pubmed_ids)} unique publications for author '{canonical_author}'.")
         
         # Validate the results to ensure all criteria are met 
         # INFORMATION -- this is not fully implemented yet, because the validation yields very low results
@@ -1313,8 +1302,16 @@ def main():
         # )
         # logger.info(f"Validated PubMed IDs: {len(validated_pubmed_ids)} unique publications remain after validation.")
 
-        publications, preprints = fetch_publication_details(all_pubmed_ids, logger, canonical_author, start_year, end_year)
-        author_count, year_count, author_year_count, year_journal_count, pub_type_count = analyze_publications(publications, canonical_author, logger)
+        # Log the number of unique IDs for this author
+        logger.info(f"Found {len(all_pubmed_ids)} unique publications for author '{canonical_author}'.")
+
+        # Fetch detailed publication data for the current author
+        publications, preprints = fetch_publication_details(
+            sorted(all_pubmed_ids), logger, canonical_author, start_year, end_year
+        )
+        author_count, year_count, author_year_count, year_journal_count, pub_type_count = analyze_publications(
+            publications, canonical_author, logger
+        )
         author_data[canonical_author] = (publications, preprints, author_count, year_count, author_year_count, year_journal_count, pub_type_count)
 
         logger.info(f"Found {len(publications)} publications and {len(preprints)} preprints for [{canonical_author}].\n")
