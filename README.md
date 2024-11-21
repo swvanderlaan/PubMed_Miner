@@ -190,6 +190,8 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
     The things we Must, Should, Could, and Would have given the time we have.
     _M_
     [] Add new visualizations for collaboration.
+    [] Add collection of pairwise collaborations. 
+    [] Add collection of group collaborations.
     [x] Add possibility to add more than one organization to search for.
     [x] Clarify help for arguments.
     [x] Re-organize the script and add annotations.
@@ -200,7 +202,7 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
     _W_
 
     **Changes log**
-    * v1.2.0beta, 2024-11-20: Added new visualizations for collaboration. Added possibility to add more than one organization to search for. Clarified help for arguments. Re-organized the script and added annotations.
+    * v1.2.0beta, 2024-11-20: Added collection of pairwise and group collaborations for the found publications. Added new visualizations for collaboration. Added possibility to add more than one organization to search for. Clarified help for arguments. Re-organized the script and added annotations.
     * v1.1.1, 2024-11-19: Improved Word-docx output. Changed logger-output to be less verbose and move things to the --debug. Clarified logger output further. 
     * v1.1.0, 2024-11-18: Fixed an issue where not all the aliases for --names, --departments and --organization were properly queried in conjunction with --organization. Added an option to include ORCID in the author alias list. Fixed issue where the moving average plot might not handle edge years (with fewer than moving_avg_window data points) gracefully.
     * v1.0.10, 2024-11-15: Fixed an issue with consistency of filenaming. Added moving average per author per year to barplot.

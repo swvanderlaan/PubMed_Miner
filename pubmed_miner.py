@@ -25,8 +25,9 @@ from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 # Plotting
 import seaborn as sns
 import networkx as nx
-from holoviews import opts, render
 import holoviews as hv
+from holoviews import opts, render
+from holoviews.plotting.util import dim
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 
@@ -35,7 +36,7 @@ import numpy as np
 import pandas as pd
 
 # Change log:
-# * v1.2.0beta, 2024-11-20: Added new visualizations for collaboration. Added possibility to add more than one organization to search for. Clarified help for arguments. Re-organized the script and added annotations.
+# * v1.2.0beta, 2024-11-20: Added collection of pairwise and group collaborations for the found publications. Added new visualizations for collaboration. Added possibility to add more than one organization to search for. Clarified help for arguments. Re-organized the script and added annotations.
 # * v1.1.1, 2024-11-19: Improved Word-docx output. Changed logger-output to be less verbose and move things to the --debug. Clarified logger output further. 
 # * v1.1.0, 2024-11-18: Fixed an issue where not all the aliases for --names, --departments and --organization were properly queried in conjunction with --organization. Added an option to include ORCID in the author alias list. Fixed issue where the moving average plot might not handle edge years (with fewer than moving_avg_window data points) gracefully.
 # * v1.0.10, 2024-11-15: Fixed an issue with consistency of filenaming. Added moving average per author per year to barplot.
@@ -367,7 +368,7 @@ def fetch_pubmed_metadata(pubmed_id, email, logger):
     Entrez.email = email
 
     try:
-        logger.info(f"Fetching metadata for PubMed ID {pubmed_id}.")
+        logger.debug(f"Fetching metadata for PubMed ID {pubmed_id}.")
         # Fetch metadata in MEDLINE format
         with Entrez.efetch(db="pubmed", id=pubmed_id, rettype="medline", retmode="text") as handle:
             record = handle.read()
@@ -389,31 +390,6 @@ def fetch_pubmed_metadata(pubmed_id, email, logger):
     except Exception as e:
         logger.error(f"Error fetching metadata for PubMed ID {pubmed_id}: {e}")
         return []
-
-# Retry logic for API calls -- needed in validation_results using medline format
-# See also remark at validation_return function: this is not working properly yet.
-def fetch_validation_with_retry(db, term, retries=3, backoff=2):
-    """
-    Fetch PubMed data with retry logic to handle rate limits or network issues.
-    This version uses the Entrez.efetch function to retrieve MEDLINE format data.
-    It is needed to validate the results based on author and affiliation.
-    Used by the validation_results function.
-    """
-    for attempt in range(retries):
-        try:
-            handle = Entrez.efetch(db=db, id=term, rettype="medline", retmode="text")
-            record = handle.read()  # Retrieve the MEDLINE format text
-            handle.close()
-            if not record:  # Check if the record is empty
-                logging.warning(f"No record returned for term [{term}] on attempt {attempt + 1}.")
-                continue
-            return record  # Return the record as a string
-        except Exception as e:
-            logging.error(f"Attempt {attempt + 1} failed for term [{term}]: {e}")
-            if attempt < retries - 1:
-                time.sleep(backoff ** attempt)  # Exponential backoff
-    logging.error(f"Failed to fetch data for term [{term}] after {retries} attempts.")
-    return None  # Return None if all retries fail
 
 # Extract affiliations -- needed in validation_results
 def extract_affiliations(record):
@@ -638,68 +614,6 @@ def fetch_publication_details(pubmed_ids, logger, main_author, start_year=None, 
 
     return publications, preprints
 
-# Filter results to ensure all criteria are met
-def validate_results(pubmed_ids, logger, author_aliases, department_aliases, organization_aliases):
-    """
-    Filter the PubMed IDs based on author aliases, department aliases, and organization aliases.
-    """
-    filtered_ids = set()
-    for pub_id in pubmed_ids:
-        logger.debug(f"Processing PubMed ID {pub_id}.")
-        record = fetch_validation_with_retry(db="pubmed", term=pub_id)  # Fetch detailed record
-        
-        if not record:  # Check if the record is None or invalid
-            logger.warning(f"PubMed ID {pub_id} returned no data. Skipping.")
-            continue
-
-        if not isinstance(record, str):
-            logger.error(f"Unexpected record format for PubMed ID {pub_id}: {type(record)}. Skipping.")
-            continue
-
-        # Extract authors and affiliations
-        authors = re.findall(r"AU  - (.+)", record) or []  # Short author list
-        logger.debug(f"> Authors: {authors}")
-        # Normalize author names
-        authors = [normalize_text(author) for author in authors]
-        # Normalize author aliases for comparison
-        normalized_author_aliases = [normalize_text(alias) for alias in author_aliases]
-        logger.debug(f"> Author aliases (normalized): {normalized_author_aliases}")
-
-        # Checking for affiliation match        
-        affiliations = extract_affiliations(record)
-        logger.debug(f"> Affiliations: {affiliations}")
-        # Normalize affiliations
-        affiliations = normalize_text(" ".join(re.findall(r"AD  - (.+)", record)))
-        logger.debug(f"> Affiliations (normalized): {affiliations}")
-
-        # Normalize department aliases
-        logger.debug(f"> Department aliases: {department_aliases}")
-        normalized_department_aliases = [normalize_text(alias) for alias in department_aliases]
-        logger.debug(f"> Department aliases (normalized): {normalized_department_aliases}")
-
-        # Normalize organization aliases
-        logger.debug(f"> Organization aliases: {organization_aliases}")
-        normalized_organization_aliases = [normalize_text(alias) for alias in organization_aliases]
-        logger.debug(f"> Organization aliases (normalized): {normalized_organization_aliases}")
-
-        # Check for matching author alias
-        author_match = any(alias in authors for alias in normalized_author_aliases)
-        logger.debug(f"> Author match: {author_match}")
-
-        # Check for matches
-        dept_match = any(alias in affiliations for alias in normalized_department_aliases)
-        logger.debug(f"> Department match: {dept_match}")
-
-        org_match = any(alias in affiliations for alias in normalized_organization_aliases)
-        logger.debug(f"> Organization match: {org_match}")
-
-        if author_match and dept_match and org_match:
-            filtered_ids.add(pub_id)
-        else:
-            logger.debug(f"PubMed ID {pub_id} did not meet all criteria and was excluded.")
-    
-    return filtered_ids
-
 # Analyze publication data
 def analyze_publications(publications_data, main_author, logger):
     """
@@ -785,7 +699,7 @@ def process_collaborations(author_data, logger, alias_mapping, results_dir, outp
             # Fetch record details using fetch_collabs_with_retry
             try:
                 logger.debug(f"Fetching record details for PMID {pub_id}.")
-                authors = fetch_pubmed_metadata(pubmed_id, email, logger)  # Custom function to fetch authors
+                authors = fetch_pubmed_metadata(pub_id, email, logger)  # Custom function to fetch authors
                 if not authors:
                     logger.warning(f"No authors found for PubMed ID {pub_id}. Skipping.")
                     continue
@@ -855,14 +769,18 @@ def process_collaborations(author_data, logger, alias_mapping, results_dir, outp
     )
     group_df["Group"] = group_df["Group"].apply(lambda x: ", ".join(x))
 
-    # Save to a single Excel file with two sheets
-    logger.info("Saving collaboration details to Excel file.")
-    excel_path = os.path.join(results_dir, f"{output_base_name}_collaborations.xlsx")
-    with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
-        pairwise_df.to_excel(writer, sheet_name="Pairwise_Collab", index=False)
-        group_df.to_excel(writer, sheet_name="Group_Collab", index=False)
+    # Save to a single Excel file with two sheets but only if there are collaborations
+    if not collaboration_data:
+        logger.warning("No collaboration data found. Skipping Excel file creation.")
+        return collaboration_data, group_collaboration_data, collaboration_matrix, authors
+    else:
+        logger.info("Saving collaboration details to Excel file.")
+        excel_path = os.path.join(results_dir, f"{output_base_name}_collaborations.xlsx")
+        with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+            pairwise_df.to_excel(writer, sheet_name="Pairwise_Collab", index=False)
+            group_df.to_excel(writer, sheet_name="Group_Collab", index=False)
 
-    logger.info(f"Collaboration details saved to {excel_path}.")
+        logger.info(f"Collaboration details saved to {excel_path}.")
 
     return collaboration_data, group_collaboration_data, collaboration_matrix, authors
 
@@ -1750,19 +1668,56 @@ def create_bar_plot(collaboration_data, results_dir, output_path):
 
 # Create a chord diagram for collaborations
 hv.extension("bokeh")
-def create_chord_diagram(collaboration_data, results_dir, output_file):
+def create_chord_diagram(collaboration_data, results_dir, output_base_name, logger, save_html=True, save_png=False):
     """
     Create a chord diagram for author collaborations.
+
     Args:
         collaboration_data (list): List of tuples (author1, author2, num_collaborations).
-        output_file (str): File path to save the plot.
+        results_dir (str): Directory to save results.
+        output_base_name (str): Base name for output files.
+        logger: Logger instance.
+        save_html (bool): Whether to save as an interactive HTML file.
+        save_png (bool): Whether to save as a static PNG image.
     """
-    df = pd.DataFrame(collaboration_data, columns=["Author 1", "Author 2", "Collaborations"])
-    chord = hv.Chord((df, hv.Dataset(df, ["Author 1", "Author 2"], "Collaborations")))
-    chord.opts(
-        opts.Chord(cmap="Category20", edge_color="Collaborations", node_size=10, labels="index", width=800, height=800)
-    )
-    render(chord).save(output_file)
+    from holoviews.plotting.util import dim
+    import holoviews as hv
+    from holoviews import opts
+    hv.extension("bokeh")
+
+    # Validate collaboration data
+    if not collaboration_data or not all(len(row) == 3 for row in collaboration_data):
+        logger.error("Invalid collaboration data. Ensure it's a list of (author1, author2, num_collaborations) tuples.")
+        return
+
+    try:
+        logger.info("Generating Chord Diagram.")
+
+        # Create DataFrame for validation
+        df = pd.DataFrame(collaboration_data, columns=["Author 1", "Author 2", "Collaborations"])
+        logger.debug(f"Collaboration data for chord diagram:\n{df.head()}")
+
+        # Create Chord diagram
+        chord = hv.Chord((df, hv.Dataset(df, ["Author 1", "Author 2"], "Collaborations")))
+        chord.opts(
+            opts.Chord(cmap="Category20", edge_color=dim("Collaborations"), node_size=10, labels="index", width=800, height=800)
+        )
+
+        # Save as HTML
+        if save_html:
+            html_path = os.path.join(results_dir, f"{output_base_name}_author_collaboration_chord.html")
+            hv.save(chord, html_path, fmt="html")
+            logger.info(f"Chord Diagram saved as HTML to {html_path}.")
+
+        # Save as PNG
+        if save_png:
+            png_path = os.path.join(results_dir, f"{output_base_name}_author_collaboration_chord.png")
+            import panel as pn
+            pn.extension()  # Required for PNG rendering
+            hv.save(chord, png_path, fmt="png")
+            logger.info(f"Chord Diagram saved as PNG to {png_path}.")
+    except Exception as e:
+        logger.error(f"Failed to generate Chord Diagram: {e}")
 
 # Create a matrix diagram for collaborations
 def create_matrix_diagram(collaboration_matrix, authors, results_dir, output_file):
@@ -2060,6 +2015,11 @@ def main():
     # Get collaboration data, group collaboration data, and details
     collaboration_data, group_collaboration_data, collaboration_matrix, authors = process_collaborations(author_data, logger, ALIAS_MAPPING, results_dir, output_base_name, Entrez.email, max_group_size=5)
     
+    # Check validity of collaboration data
+    if not collaboration_data or not all(len(row) == 3 for row in collaboration_data):
+        logger.error("Invalid collaboration data. Ensure it's a list of (author1, author2, num_collaborations) tuples.")
+    return
+
     # Create collaboration visualizations if data is available
     if not collaboration_data:
         logger.warning("No collaboration data available; skipping collaboration visualizations.")
@@ -2089,7 +2049,7 @@ def main():
         logger.info(f"Generating pairwise collaboration visualizations.\n")
         create_network_graph(collaboration_data, results_dir, f"{output_base_name}_author_collaboration_network.png")
         create_bar_plot(collaboration_data, results_dir, f"{output_base_name}_top_collaborations_barplot.png")
-        create_chord_diagram(collaboration_data, results_dir, f"{output_base_name}_author_collaboration_chord.png")
+        create_chord_diagram(collaboration_data, results_dir, output_base_name, logger, save_html=True, save_png=True)
     
         # Generate collaboration matrix visualizations
         if collaboration_matrix is None or collaboration_matrix.size == 0:
@@ -2123,22 +2083,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-####################################################################################################
-#                                   VALIDATE RESULTS                                               #
-################################################################################################
-# Validate the results to ensure all criteria are met should be pasted in the main function
-        # INFORMATION -- this is not fully implemented yet, because the validation yields very low results
-        # for now, we will skip this step when processing all_pubmed_ids, 
-        # logger.info(f"Validating {len(all_pubmed_ids)} unique publications for [{canonical_author}].")
-        # # Make sure we list all the department and organization aliases -- not just the one we're previously iterating over
-        # validation_department_aliases = DEPARTMENT_ALIAS_MAPPING.get(department, [department])
-        # validation_organization_aliases = ORGANIZATION_ALIAS_MAPPING.get(args.organization, [args.organization])
-        # validated_pubmed_ids = validate_results(
-        #     pubmed_ids=all_pubmed_ids,
-        #     logger=logger,
-        #     author_aliases=canonical_author_aliases,
-        #     department_aliases=validation_department_aliases,
-        #     organization_aliases=validation_organization_aliases
-        # )
-        # logger.info(f"Validated PubMed IDs: {len(validated_pubmed_ids)} unique publications remain after validation.")
