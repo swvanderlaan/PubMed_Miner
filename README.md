@@ -39,9 +39,13 @@ And some `pip` packages:
 
 - `xlsxwriter` needed by `pandas` for writing Excel files.
 - `openpyxl` needed by `pandas` for reading Excel files.
+- `seaborn` for plotting the author collaborations.
+- `networkx` for plotting the author collaborations.
+- `holoviews` for plotting the author collaborations.
+- `plotly` for interactive plotting the author collaborations.
 
 ```
-pip install xlsxwriter openpyxl
+pip install xlsxwriter openpyxl seaborn networkx holoviews plotly
 ```
 
 ## How to use
@@ -62,17 +66,21 @@ python pubmed_miner.py --help
 
 ```
 Required arguments:
+    
     -e, --email <email-address>  Email address for PubMed API access.
 
 Optional arguments:
     -n, --names <names>          List of author names to search for. 
                                     Default: `{DEFAULT_NAMES}` with these aliases: `{ALIAS_MAPPING}`.
     -d, --departments <depts>    List of departments to search for. Default: `{DEFAULT_DEPARTMENTS}`.
+    --ignore-departments         Ignore departments in the PubMed query.
     -org, --organization <org>   Organization name for filtering results. Default: `{DEFAULT_ORGANIZATION}`.
     -y, --year <year>            Filter publications by year or year range (e.g., 2024 or 2017-2024).
     -o, --output-file <file>     Output base name for the Word and Excel files. Default: date_CDL_UMCU_Publications.
     -r, --results-dir <dir>      Directory to save results. Default: results.
+    --dummy                      Dummy argument for testing. Creates a dummy dataset.
     -v, --verbose                Enable verbose output.
+    -d, --debug                  Enable debug output.
     -V, --version                Show program's version number and exit.
 
 Example #1 -- produces results for all authors in the DEFAULT_NAMES list across all departments and all years
@@ -174,14 +182,17 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 
 #### Changes log
     
-    _Version:_      v1.1.1</br>
-    _Last update:_  2024-11-19</br>
+    _Version:_      v1.2.0beta</br>
+    _Last update:_  2024-11-20</br>
     _Written by:_   Sander W. van der Laan (s.w.vanderlaan [at] gmail [dot] com).
     
     **MoSCoW To-Do List**
     The things we Must, Should, Could, and Would have given the time we have.
     _M_
-
+    [] Add new visualizations for collaboration.
+    [x] Add possibility to add more than one organization to search for.
+    [x] Clarify help for arguments.
+    [x] Re-organize the script and add annotations.
     _S_
 
     _C_
@@ -189,6 +200,7 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
     _W_
 
     **Changes log**
+    * v1.2.0beta, 2024-11-20: Added new visualizations for collaboration. Added possibility to add more than one organization to search for. Clarified help for arguments. Re-organized the script and added annotations.
     * v1.1.1, 2024-11-19: Improved Word-docx output. Changed logger-output to be less verbose and move things to the --debug. Clarified logger output further. 
     * v1.1.0, 2024-11-18: Fixed an issue where not all the aliases for --names, --departments and --organization were properly queried in conjunction with --organization. Added an option to include ORCID in the author alias list. Fixed issue where the moving average plot might not handle edge years (with fewer than moving_avg_window data points) gracefully.
     * v1.0.10, 2024-11-15: Fixed an issue with consistency of filenaming. Added moving average per author per year to barplot.

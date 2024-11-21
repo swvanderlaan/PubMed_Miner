@@ -10,6 +10,9 @@ import importlib
 import time
 from datetime import datetime
 from collections import defaultdict
+from itertools import combinations
+from collections import Counter
+import xml.etree.ElementTree as ET
 
 # Mining PubMed
 from Bio import Entrez
@@ -20,6 +23,11 @@ from docx.shared import Pt, RGBColor, Inches  # Add Pt for font size and color
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 
 # Plotting
+import seaborn as sns
+import networkx as nx
+from holoviews import opts, render
+import holoviews as hv
+import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 
 # Data manipulation
@@ -27,6 +35,7 @@ import numpy as np
 import pandas as pd
 
 # Change log:
+# * v1.2.0beta, 2024-11-20: Added new visualizations for collaboration. Added possibility to add more than one organization to search for. Clarified help for arguments. Re-organized the script and added annotations.
 # * v1.1.1, 2024-11-19: Improved Word-docx output. Changed logger-output to be less verbose and move things to the --debug. Clarified logger output further. 
 # * v1.1.0, 2024-11-18: Fixed an issue where not all the aliases for --names, --departments and --organization were properly queried in conjunction with --organization. Added an option to include ORCID in the author alias list. Fixed issue where the moving average plot might not handle edge years (with fewer than moving_avg_window data points) gracefully.
 # * v1.0.10, 2024-11-15: Fixed an issue with consistency of filenaming. Added moving average per author per year to barplot.
@@ -43,8 +52,8 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.1.1'
-VERSION_DATE = '2024-11-19'
+VERSION = '1.2.0beta'
+VERSION_DATE = '2024-11-20'
 COPYRIGHT_AUTHOR = 'Sander W. van der Laan'
 COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
@@ -62,11 +71,16 @@ ALIAS_MAPPING = {
     "van der Laan SW": [
         "van der Laan SW",
         "van der Laan S", 
+        "van der Laan, SW",
+        "van der Laan, S",
         "van der Laan, Sander W",
         "van der Laan Sander W",
         "van der Laan, Sander",
         "van der Laan Sander",
+        "Sander W van der Laan",
         "Sander van der Laan", 
+        "SW van der Laan",
+        "S van der Laan",
         "0000-0001-6888-1404",
         # Add other aliases as needed
     ],
@@ -138,6 +152,7 @@ DEPARTMENT_ALIAS_MAPPING = {
         "CDL",
         "CDL Research",
         "Central Diagnostic Laboratory",
+        "Central Diagnostic Laboratory Research",
         "Central Diagnostics Laboratory Research",
         "Central Diagnostic Laboratory, Division Laboratories, Pharmacy, and Biomedical genetics",
         "Central Diagnostics Laboratory, Division Laboratories, Pharmacy, and Biomedical genetics"
@@ -146,6 +161,14 @@ DEPARTMENT_ALIAS_MAPPING = {
         "Laboratory of Clinical Chemistry and Hematology, Division Laboratories & Pharmacy",
         "Laboratory of Clinical Chemistry and Hematology",
         "Laboratory Clinical Chemistry and Hematology",
+        "LKCH",
+        "Laboratory of Clinical Chemistry and Hematology, Division Laboratories and Pharmacy, UMC Utrecht",
+        "Laboratorium Klinische Chemie en Hematologie",
+        "Laboratorium Klinische Chemie en Hematologie, Divisie Laboratoria en Apotheek",
+        "Laboratorium voor Klinische Chemie en Hematologie",
+        "Laboratorium voor Klinische Chemie en Hematologie, Divisie Laboratoria en Apotheek",
+        "Departments of Clinical Chemistry and Haematology",
+        "Department of Clinical Chemistry and Haematology",
         # Add other aliases as needed
     ],
     # Add other departments as needed
@@ -186,9 +209,13 @@ DEFAULT_NAMES = ["van der Laan SW",
 "den Ruijter HM", 
 "Hoefer IE",
 "Vader P"]
-DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory"]
-# DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory", "Laboratory of Experimental Cardiology"]
-DEFAULT_ORGANIZATION = "University Medical Center Utrecht"
+# DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory"]
+DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory", "Laboratory of Experimental Cardiology"]
+DEFAULT_ORGANIZATION = ["University Medical Center Utrecht"]
+
+####################################################################################################
+#                                   SETUP FUNCTIONS                                                #
+####################################################################################################
 
 # Setup Logging
 def setup_logger(results_dir, output_base_name, verbose, debug):
@@ -233,6 +260,71 @@ def check_install_package(package_name, logger):
         logger.info(f'{package_name} is not installed. Installing it now...')
         subprocess.check_call(['pip', 'install', package_name])
 
+# Parse year or year range
+def parse_year_range(year_range_str):
+    """
+    Parse year or year range string and return start and end year.
+    """
+    if '-' in year_range_str:
+        start_year, end_year = map(int, year_range_str.split('-'))
+    else:
+        start_year = end_year = int(year_range_str)
+    return start_year, end_year
+
+# Parse command-line arguments
+def parse_arguments():
+    """
+    Parse command-line arguments.
+    """
+    parser = argparse.ArgumentParser(description=f"""
+{VERSION_NAME} v{VERSION} ({VERSION_DATE})
+Retrieve PubMed publications for a list of authors.""",
+        epilog=f"""
+This script retrieves PubMed publications for a list of authors and departments from UMC Utrecht.
+It then analyzes the publication data and saves the results to a Word document and an Excel file.
+
+Required arguments:
+    -e, --email <email-address>  Email address for PubMed API access.
+
+Optional arguments:
+    -n, --names <names>          List of (main) author names to search for. Could also be an ORCID.
+                                 Default: {DEFAULT_NAMES} with these aliases: {ALIAS_MAPPING}.
+    -dep, --departments <depts>  List of departments to search for. 
+                                 Default: {DEFAULT_DEPARTMENTS} with these aliases: {DEPARTMENT_ALIAS_MAPPING}.
+    --ignore-departments         Ignore departments in the PubMed query.
+    -org, --organization <org>   Organization name for filtering results. 
+                                 Default: {DEFAULT_ORGANIZATION} with these aliases {ORGANIZATION_ALIAS_MAPPING}.
+    -y, --year <year>            Filter publications by year or year range (e.g., 2024 or 2017-2024).
+    -o, --output-file <file>     Output base name for the Word and Excel files. Default: date_CDL_UMCU_Publications.
+    -r, --results-dir <dir>      Directory to save results. Default: results.
+    --dummy                      Dummy argument for testing. Creates a dummy dataset.
+    -v, --verbose                Enable verbose output.
+    -d, --debug                  Enable debug output.
+    -V, --version                Show program's version number and exit.
+
+Example:
+    python pubmed_miner.py --email <email-address> --year 2017-2024 --verbose
++ {VERSION_NAME} v{VERSION}. {COPYRIGHT} +
+{COPYRIGHT_TEXT}""",
+        formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("-e", "--email", required=True, help="Email for PubMed API access. Only used by PubMed to log your query, it is not used to query. Required.")
+    parser.add_argument("--dummy", action="store_true", help="Use dummy data for testing and debugging.")
+    parser.add_argument("-n", "--names", nargs='+', default=DEFAULT_NAMES, help=f"List of (main) author names or ORCIDs to search for. For example 'van der Laan SW' or '0000-0001-6888-1404'. Defaults: {DEFAULT_NAMES} with aliases {ALIAS_MAPPING}.")
+    parser.add_argument("-dep", "--departments", nargs='+', default=DEFAULT_DEPARTMENTS, help=f"List of departments to search for. For example 'Central Diagnostics Laboratory'. Defaults: {DEFAULT_DEPARTMENTS} with aliases {DEPARTMENT_ALIAS_MAPPING}.")
+    parser.add_argument("--ignore-departments", action="store_true", help="Ignore departments in the PubMed query.")
+    parser.add_argument("-org", "--organization", nargs='+', default=DEFAULT_ORGANIZATION, help=f"Organization name for filtering results. For example 'University Medical Center Utrecht'. Default: {DEFAULT_ORGANIZATION} with aliases {ORGANIZATION_ALIAS_MAPPING}.")
+    parser.add_argument("-y", "--year", help="Filter publications by year or year range, for example, 2024 or 2017-2024.")
+    parser.add_argument("-o", "--output-file", default="CDL_UMCU_Publications", help="Output base name for the Word and Excel files. Default: date_CDL_UMCU_Publications.")
+    parser.add_argument("-r", "--results-dir", default="results", help="Directory to save results. Default: results.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output.")
+    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug output. Note: this will produce a lot of output.")
+    parser.add_argument('-V', '--version', action='version', version=f'{VERSION_NAME} {VERSION} ({VERSION_DATE})')
+    return parser.parse_args()
+
+####################################################################################################
+#                                   DATA PROCESSING FUNCTIONS                                      #
+####################################################################################################
+
 # Normalize text -- needed for validation_results (could be used elsewhere too)
 def normalize_text(text):
     """
@@ -258,6 +350,45 @@ def fetch_with_retry(db, term, retries=3, backoff=2):
                 time.sleep(backoff ** attempt)
                 continue
             raise e
+
+# Retry logic for API calls -- needed for the process_collaborations function
+def fetch_pubmed_metadata(pubmed_id, email, logger):
+    """
+    Fetch and return metadata for a PubMed article, specifically extracting authors.
+
+    Args:
+        pubmed_id (str): PubMed ID of the article.
+        email (str): Email address to use for PubMed API.
+        logger (Logger): Logger object for logging.
+
+    Returns:
+        list: List of authors for the given PubMed ID.
+    """
+    Entrez.email = email
+
+    try:
+        logger.info(f"Fetching metadata for PubMed ID {pubmed_id}.")
+        # Fetch metadata in MEDLINE format
+        with Entrez.efetch(db="pubmed", id=pubmed_id, rettype="medline", retmode="text") as handle:
+            record = handle.read()
+
+        # Extract authors from the MEDLINE format
+        logger.debug(f"Parsing authors for PubMed ID {pubmed_id}.")
+        authors = []
+        for line in record.split("\n"):
+            if line.startswith("AU  -"):  # Author line in MEDLINE format
+                author_name = line.replace("AU  - ", "").strip()
+                authors.append(author_name)
+
+        if not authors:
+            logger.warning(f"No authors found for PubMed ID {pubmed_id}.")
+        else:
+            logger.debug(f"Authors found for PubMed ID {pubmed_id}: {authors}")
+
+        return authors
+    except Exception as e:
+        logger.error(f"Error fetching metadata for PubMed ID {pubmed_id}: {e}")
+        return []
 
 # Retry logic for API calls -- needed in validation_results using medline format
 # See also remark at validation_return function: this is not working properly yet.
@@ -315,63 +446,6 @@ def extract_affiliations(record):
         affiliations.append(current_affiliation.strip())
 
     return " ".join(affiliations)  # Combine into a single string
-
-# Parse year or year range
-def parse_year_range(year_range_str):
-    """
-    Parse year or year range string and return start and end year.
-    """
-    if '-' in year_range_str:
-        start_year, end_year = map(int, year_range_str.split('-'))
-    else:
-        start_year = end_year = int(year_range_str)
-    return start_year, end_year
-
-# Parse command-line arguments
-def parse_arguments():
-    """
-    Parse command-line arguments.
-    """
-    parser = argparse.ArgumentParser(description=f"""
-{VERSION_NAME} v{VERSION} ({VERSION_DATE})
-Retrieve PubMed publications for a list of authors.""",
-        epilog=f"""
-This script retrieves PubMed publications for a list of authors and departments from UMC Utrecht.
-It then analyzes the publication data and saves the results to a Word document and an Excel file.
-
-Required arguments:
-    -e, --email <email-address>  Email address for PubMed API access.
-
-Optional arguments:
-    -n, --names <names>          List of (main) author names to search for. Could also be an ORCID.
-                                 Default: {DEFAULT_NAMES} with these aliases: {ALIAS_MAPPING}.
-    -dep, --departments <depts>  List of departments to search for. 
-                                 Default: {DEFAULT_DEPARTMENTS} with these aliases: {DEPARTMENT_ALIAS_MAPPING}.
-    -org, --organization <org>   Organization name for filtering results. 
-                                 Default: {DEFAULT_ORGANIZATION} with these aliases {ORGANIZATION_ALIAS_MAPPING}.
-    -y, --year <year>            Filter publications by year or year range (e.g., 2024 or 2017-2024).
-    -o, --output-file <file>     Output base name for the Word and Excel files. Default: date_CDL_UMCU_Publications.
-    -r, --results-dir <dir>      Directory to save results. Default: results.
-    -v, --verbose                Enable verbose output.
-    -d, --debug                  Enable debug output.
-    -V, --version                Show program's version number and exit.
-
-Example:
-    python pubmed_miner.py --email <email-address> --year 2017-2024 --verbose
-+ {VERSION_NAME} v{VERSION}. {COPYRIGHT} +
-{COPYRIGHT_TEXT}""",
-        formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("-e", "--email", required=True, help="Email for PubMed API access.")
-    parser.add_argument("-n", "--names", nargs='+', default=DEFAULT_NAMES, help="List of (main) author names or ORCIDs to search for.")
-    parser.add_argument("-dep", "--departments", nargs='+', default=DEFAULT_DEPARTMENTS, help="List of departments to search for.")
-    parser.add_argument("-org", "--organization", default=DEFAULT_ORGANIZATION, help="Organization name for filtering results.")
-    parser.add_argument("-y", "--year", help="Filter publications by year or year range (e.g., 2024 or 2017-2024).")
-    parser.add_argument("-o", "--output-file", default="CDL_UMCU_Publications", help="Output base name for the Word and Excel files.")
-    parser.add_argument("-r", "--results-dir", default="results", help="Directory to save results.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output.")
-    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug output.")
-    parser.add_argument('-V', '--version', action='version', version=f'{VERSION_NAME} {VERSION} ({VERSION_DATE})')
-    return parser.parse_args()
 
 # Get canonical author name
 def get_canonical_author(author, logger=None):
@@ -662,6 +736,200 @@ def analyze_publications(publications_data, main_author, logger):
     
     return author_count, year_count, author_year_count, year_journal_count, pub_type_count
 
+# Process collaborations between authors based on publications
+def process_collaborations(author_data, logger, alias_mapping, results_dir, output_base_name, email, max_group_size=5):
+    """
+    Process collaborations by fetching publication details from Entrez and analyzing author collaborations.
+
+    Args:
+        author_data (dict): Contains author publication data with PubMed IDs.
+        logger: Logger instance.
+        alias_mapping (dict): Mapping of canonical authors to their aliases.
+        results_dir (str): Directory to save results.
+        output_base_name (str): Base name for output files.
+        email (str): Email address for Entrez queries.
+        max_group_size (int): Maximum group size to consider for collaborations.
+
+    Returns:
+        tuple:
+            collaboration_data (list): Pairwise collaborations with details.
+            group_collaboration_data (Counter): Group collaborations with counts.
+            collaboration_matrix (np.array): Matrix showing pairwise collaboration counts.
+            authors (list): List of unique canonical authors.
+    """
+    from Bio import Entrez
+    Entrez.email = email  # Set email for Entrez queries
+
+    alias_to_canonical = {
+        alias: canonical
+        for canonical, aliases in alias_mapping.items()
+        for alias in aliases
+    }
+
+    # Initialize structures
+    collaboration_counts = defaultdict(lambda: defaultdict(int))
+    group_collaboration_data = Counter()
+    collaboration_details = []
+    group_details = []
+    canonical_authors = set(alias_to_canonical.values())
+
+    logger.info(f"> Processing collaborations for {len(author_data)} authors.")
+
+    for canonical_author, (publications, preprints, _, _, _, _, _) in author_data.items():
+        all_publications = publications + preprints
+        logger.info(f"> Processing {len(all_publications)} records for author '{canonical_author}'.")
+
+        for pub in all_publications:
+            pub_id, _, year, journal, jid, title, doi, citation, *_ = pub
+
+            # Fetch record details using fetch_collabs_with_retry
+            try:
+                logger.debug(f"Fetching record details for PMID {pub_id}.")
+                authors = fetch_pubmed_metadata(pubmed_id, email, logger)  # Custom function to fetch authors
+                if not authors:
+                    logger.warning(f"No authors found for PubMed ID {pub_id}. Skipping.")
+                    continue
+
+                # Map authors to canonical names
+                publication_authors = {
+                    alias_to_canonical.get(author.strip(), None)
+                    for author in authors
+                }
+                publication_authors.discard(None)  # Remove None values
+
+                if len(publication_authors) < 2:
+                    logger.debug(f"Skipping publication with less than 2 canonical authors: PubMed ID {pub_id}")
+                    continue
+
+                # Pairwise collaborations
+                for author1, author2 in combinations(sorted(publication_authors), 2):
+                    collaboration_counts[author1][author2] += 1
+                    collaboration_counts[author2][author1] += 1
+                    collaboration_details.append(
+                        (author1, author2, pub_id, year, journal, jid, title, doi, citation)
+                    )
+
+                # Group collaborations
+                for group_size in range(3, min(len(publication_authors), max_group_size) + 1):
+                    for group in combinations(sorted(publication_authors), group_size):
+                        group_collaboration_data[group] += 1
+                        group_details.append(
+                            (group, pub_id, year, journal, jid, title, doi, citation)
+                        )
+            except Exception as e:
+                logger.error(f"Error fetching PubMed record for {pub_id}: {e}")
+                continue
+
+    # Create pairwise collaborations matrix
+    logger.info("> Creating collaboration matrix.")
+    collaboration_data = [
+        (author1, author2, count)
+        for author1, collabs in collaboration_counts.items()
+        for author2, count in collabs.items()
+    ]
+
+    authors = sorted(canonical_authors)
+    author_index = {author: idx for idx, author in enumerate(authors)}
+    collaboration_matrix = np.zeros((len(authors), len(authors)), dtype=int)
+
+    for author1, author2, count in collaboration_data:
+        idx1, idx2 = author_index[author1], author_index[author2]
+        collaboration_matrix[idx1, idx2] = count
+        collaboration_matrix[idx2, idx1] = count
+
+    # Log the collaboration matrix
+    logger.debug("Collaboration matrix created:")
+    logger.debug(pd.DataFrame(collaboration_matrix, index=authors, columns=authors))
+
+    # Create DataFrames
+    logger.info("Creating dataset with pairwise collaboration details.")
+    pairwise_df = pd.DataFrame(
+        collaboration_details,
+        columns=["Canonical Author 1", "Canonical Author 2", "PMID", "Year",
+                 "Journal", "JID", "Title", "DOI Link", "Citation"]
+    )
+    logger.info("Creating dataset with group collaboration details.")
+    group_df = pd.DataFrame(
+        group_details,
+        columns=["Group", "PMID", "Year", "Journal", "JID", "Title", "DOI Link", "Citation"]
+    )
+    group_df["Group"] = group_df["Group"].apply(lambda x: ", ".join(x))
+
+    # Save to a single Excel file with two sheets
+    logger.info("Saving collaboration details to Excel file.")
+    excel_path = os.path.join(results_dir, f"{output_base_name}_collaborations.xlsx")
+    with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+        pairwise_df.to_excel(writer, sheet_name="Pairwise_Collab", index=False)
+        group_df.to_excel(writer, sheet_name="Group_Collab", index=False)
+
+    logger.info(f"Collaboration details saved to {excel_path}.")
+
+    return collaboration_data, group_collaboration_data, collaboration_matrix, authors
+
+# Generate dummy data for testing
+def generate_dummy_data():
+    dummy_authors = ["Author A", "Author B", "Author C", "Author D", "Author E"]
+    dummy_journals = ["Journal 1", "Journal 2", "Journal 3"]
+    dummy_years = range(2015, 2023)
+    dummy_data = defaultdict(lambda: ([], [], {}, {}, {}, {}, {}))  # Ensure all fields match expectations
+
+    for i in range(500):  # Create 500 dummy publications
+        pub_id = f"DUMMY{i+1}"
+        year = np.random.choice(dummy_years)
+        journal = np.random.choice(dummy_journals)
+        title = f"Dummy Title {i+1}"
+        authors = np.random.choice(dummy_authors, size=np.random.randint(2, 4), replace=False).tolist()
+        doi = f"https://doi.org/{i+1}"
+        citation = f"Dummy Citation {i+1}"
+        access_type = np.random.choice(["open access", "closed access"])
+        pub_type = np.random.choice(["Journal Article", "Review", "Other"])
+        
+        publication = (pub_id, ", ".join(authors), year, journal, f"JID{i % 10}", title, doi, citation, pub_type, access_type)
+
+        # Assign publication to a random canonical author
+        canonical_author = np.random.choice(dummy_authors)
+        dummy_data[canonical_author][0].append(publication)  # Add to publications
+
+        # Add preprints with a smaller probability
+        if np.random.rand() < 0.2:  # 20% chance
+            preprint = (pub_id, ", ".join(authors), year, journal, f"JID{i % 10}", title, doi, citation, pub_type)
+            dummy_data[canonical_author][1].append(preprint)  # Add to preprints
+
+    # Generate counts for each canonical author
+    for canonical_author in dummy_authors:
+        publications, preprints, _, _, _, _, _ = dummy_data[canonical_author]
+        author_count = defaultdict(int)
+        year_count = defaultdict(int)
+        author_year_count = defaultdict(lambda: defaultdict(int))
+        year_journal_count = defaultdict(lambda: defaultdict(int))
+        pub_type_count = defaultdict(lambda: defaultdict(int))
+
+        for pub in publications:
+            _, author_list, year, journal, _, _, _, _, pub_type, _ = pub
+            author_list = author_list.split(", ")
+            for author in author_list:
+                author_count[author] += 1
+                author_year_count[author][year] += 1
+            year_count[year] += 1
+            year_journal_count[year][journal] += 1
+            pub_type_count[pub_type][year] += 1
+
+        dummy_data[canonical_author] = (
+            publications,
+            preprints,
+            author_count,
+            year_count,
+            author_year_count,
+            year_journal_count,
+            pub_type_count,
+        )
+
+    return dummy_data
+
+####################################################################################################
+#                                   WRITE RESULTS TO EXCEL                                         #
+####################################################################################################
+
 # Write results to Excel
 def write_to_excel(author_data, output_base_name, results_dir, logger):
     """
@@ -795,6 +1063,10 @@ def write_to_excel(author_data, output_base_name, results_dir, logger):
     # Save the Excel file
     logger.info(f"Excel file saved to [{output_path})].\n")
     writer.close()
+    
+####################################################################################################
+#                                   WRITE RESULTS TO WORD                                          #
+####################################################################################################
 
 # Word document table creation
 def add_table_to_doc(doc, data, headers, title):
@@ -1102,13 +1374,54 @@ def write_to_word(author_data, output_base_name, results_dir, logger, args):
             except Exception as e:
                 logger.error(f"Error adding plot {plot_path}: {e}")
         else:
-            logger.warning(f"Plot file not found: {plot_path}")
+            logger.warning(f"Plot file not found: {plot_path}. The actual graph-file in .png-format is not found. Double back and check. For instance, there could to little data to plot.")
             document.add_paragraph(f"Plot {plot_name} not found. The actual graph-file in .png-format is not found. Double back and check. For instance, there could to little data to plot.", style="List Bullet")
-
+    
+    # # Add a page break and heading for the collaboration visualizations
+    # document.add_page_break()
+    # document.add_paragraph("Collaboration Visualizations", style="Heading 1")
+    # # Add collaboration visualizations
+    # logger.info("> Adding collaboration visualizations.")
+    # collab_plot_files = [
+    #     f"{output_base_name}_author_collaboration_network.png",
+    #     f"{output_base_name}_author_collaboration_heatmap.png",
+    #     f"{output_base_name}_top_collaborations_barplot.png",
+    #     f"{output_base_name}_author_collaboration_chord.png",
+    #     f"{output_base_name}_author_collaboration_matrix.png",
+    # ]
+    # for plot_file in collab_plot_files:
+    #     plot_path = os.path.join(results_dir, plot_file)
+    #     if os.path.exists(plot_path):
+    #         try:
+    #             document.add_picture(plot_path, width=Inches(6))
+    #             document.add_paragraph()
+    #         except Exception as e:
+    #             logger.error(f"Error adding plot {plot_file}: {e}")
+    #     else:
+    #         logger.warning(f"Collaborative plot file not found: {plot_file}. The actual graph-file in .png-format is not found. Double back and check. For instance, there could to little data to plot.")
+    #         document.add_paragraph(f"Collaborative plot {plot_file} not found. The actual graph-file in .png-format is not found. Double back and check. For instance, there could to little data to plot.", style="List Bullet")
+    # # Add group collaboration visualizations
+    # for plot_name in [
+    #     f"{output_base_name}_group_size_distribution.png",
+    #     f"{output_base_name}_group_size_by_year.png",
+    #     f"{output_base_name}_author_group_heatmap.png",
+    # ]:
+    #     plot_path = f"{results_dir}/{plot_name}"
+    #     if os.path.exists(plot_path):
+    #         document.add_picture(plot_path, width=Inches(6))
+    #         document.add_paragraph()
+    #     else:
+    #         logger.warning(f"Collaborative group plot {plot_name} not found. The actual graph-file in .png-format is not found. Double back and check. For instance, there could to little data to plot.")
+    #         document.add_paragraph(f"Collaborative group plot {plot_file} not found. The actual graph-file in .png-format is not found. Double back and check. For instance, there could to little data to plot.", style="List Bullet")
+    
     # Save the document
     output_path = os.path.join(results_dir, f"{output_base_name}.docx")
     document.save(output_path)
     logger.info(f"Word document saved to [{output_path}].")
+
+####################################################################################################
+#                                   PLOT RESULTS                                                   #
+####################################################################################################
 
 # Plot the results
 def plot_results(author_data, results_dir, logger, output_base_name):
@@ -1357,16 +1670,259 @@ def plot_results(author_data, results_dir, logger, output_base_name):
     plt.tight_layout()
     plt.savefig(os.path.join(results_dir, plot_filenames["publications_by_access_type"]))
 
+# Create a network graph for author collaborations
+def create_network_graph(collaboration_data, results_dir, output_file):
+    """
+    Create a network graph showing collaborations between authors.
+    Args:
+        collaboration_data (list): List of tuples (author1, author2, num_collaborations).
+        output_file (str): File path to save the plot.
+    """
+    G = nx.Graph()
+    
+    # Add edges with weights
+    for author1, author2, num_papers in collaboration_data:
+        G.add_edge(author1, author2, weight=num_papers)
+    
+    # Draw the graph
+    pos = nx.spring_layout(G)  # Positioning of nodes
+    weights = [G[u][v]['weight'] for u, v in G.edges()]
+    nx.draw(
+        G, pos, with_labels=True, width=weights, node_color="skyblue",
+        edge_color="gray", node_size=2000, font_size=10
+    )
+    plt.title("Author Collaboration Network")
+    plt.savefig(output_file)
+    plt.close()
+
+# Create a heatmap for collaborations
+def create_heatmap(collaboration_matrix, authors, results_dir, output_file):
+    """
+    Create a heatmap showing collaborations between authors.
+    Args:
+        collaboration_matrix (np.array): Collaboration matrix (2D array).
+        authors (list): List of authors corresponding to rows/columns.
+        output_file (str): File path to save the plot.
+    """
+    df = pd.DataFrame(collaboration_matrix, index=authors, columns=authors)
+    sns.heatmap(df, annot=True, fmt="d", cmap="Blues", cbar=True)
+    plt.title("Author Collaboration Heatmap")
+    plt.xlabel("Authors")
+    plt.ylabel("Authors")
+    plt.savefig(output_file)
+    plt.close()
+
+# Create a bar plot of collaborations
+def create_bar_plot(collaboration_data, results_dir, output_path):
+    """
+    Create a bar plot for the top collaborations.
+
+    Args:
+        collaboration_data (list): List of tuples (author1, author2, num_collaborations).
+        output_path (str): Path to save the plot.
+
+    Returns:
+        None
+    """
+    # Convert collaboration_data into a DataFrame
+    collaboration_df = pd.DataFrame(collaboration_data, columns=["Author1", "Author2", "NumCollaborations"])
+
+    # Combine author pairs for display purposes
+    collaboration_df["Pair"] = collaboration_df.apply(
+        lambda row: f"{row['Author1']} & {row['Author2']}", axis=1
+    )
+
+    # Sort by number of collaborations and select the top 10
+    top_collaborations = collaboration_df.sort_values(by="NumCollaborations", ascending=False).head(10)
+
+    # Plot
+    plt.figure(figsize=(10, 6))
+    plt.barh(top_collaborations["Pair"], top_collaborations["NumCollaborations"], color="skyblue")
+    plt.xlabel("Number of Collaborations")
+    plt.ylabel("Author Pairs")
+    plt.title("Top Collaborations")
+    plt.gca().invert_yaxis()  # Invert y-axis for better readability
+    plt.tight_layout()
+
+    # Save the plot
+    plt.savefig(output_path)
+    plt.close()
+
+# Create a chord diagram for collaborations
+hv.extension("bokeh")
+def create_chord_diagram(collaboration_data, results_dir, output_file):
+    """
+    Create a chord diagram for author collaborations.
+    Args:
+        collaboration_data (list): List of tuples (author1, author2, num_collaborations).
+        output_file (str): File path to save the plot.
+    """
+    df = pd.DataFrame(collaboration_data, columns=["Author 1", "Author 2", "Collaborations"])
+    chord = hv.Chord((df, hv.Dataset(df, ["Author 1", "Author 2"], "Collaborations")))
+    chord.opts(
+        opts.Chord(cmap="Category20", edge_color="Collaborations", node_size=10, labels="index", width=800, height=800)
+    )
+    render(chord).save(output_file)
+
+# Create a matrix diagram for collaborations
+def create_matrix_diagram(collaboration_matrix, authors, results_dir, output_file):
+    """
+    Create a matrix diagram showing collaborations between authors.
+    Args:
+        collaboration_matrix (np.array): Collaboration matrix (2D array).
+        authors (list): List of authors corresponding to rows/columns.
+        output_file (str): File path to save the plot.
+    """
+    fig, ax = plt.subplots()
+    cax = ax.matshow(collaboration_matrix, cmap="Blues")
+    fig.colorbar(cax)
+    ax.set_xticks(np.arange(len(authors)))
+    ax.set_yticks(np.arange(len(authors)))
+    ax.set_xticklabels(authors, rotation=90)
+    ax.set_yticklabels(authors)
+    plt.title("Collaboration Matrix")
+    plt.savefig(output_file)
+    plt.close()
+
+# Create visualizations for group collaborations
+def create_collaboration_visualizations(group_collaboration_data, authors, results_dir, output_base_name, logger):
+    if not group_collaboration_data:
+        logger.warning("Insufficient data for collaboration visualizations.")
+        return
+    
+    logger.info("Creating collaboration visualizations.")
+    try:
+        plot_group_size_distribution(group_collaboration_data, f"{results_dir}/{output_base_name}_group_size_distribution.png")
+        logger.info("> Group Size Distribution plot saved.")
+        
+        plot_group_chord_diagram(group_collaboration_data, authors, f"{results_dir}/{output_base_name}_group_chord_diagram.html")
+        logger.info("> Group Chord Diagram saved.")
+        
+        plot_group_size_by_year(group_collaboration_data, f"{results_dir}/{output_base_name}_group_size_by_year.png")
+        logger.info("> Group Size by Year plot saved.")
+        
+        plot_author_group_heatmap(group_collaboration_data, authors, f"{results_dir}/{output_base_name}_author_group_heatmap.png")
+        logger.info("> Author Group Heatmap plot saved.")
+        
+        plot_interactive_author_network(group_collaboration_data, authors, f"{results_dir}/{output_base_name}_author_network.html")
+        logger.info("> Interactive Author Network plot saved.")
+    except Exception as e:
+        logger.error(f"Error while creating collaboration visualizations: {e}")
+
+# Group collabborations: Bar Plot, Group Sizes vs. Frequency
+def plot_group_size_distribution(group_collaboration_data, output_file):
+    group_sizes = [len(group) for group in group_collaboration_data.keys()]
+    frequencies = list(group_collaboration_data.values())
+    
+    plt.figure(figsize=(8, 6))
+    plt.bar(group_sizes, frequencies, color='skyblue')
+    plt.xlabel("Group Size")
+    plt.ylabel("Number of Collaborations")
+    plt.title("Collaboration Group Size Distribution")
+    plt.xticks(range(2, max(group_sizes) + 1))  # Only show valid group sizes
+    plt.tight_layout()
+    plt.savefig(output_file)
+    plt.close()
+
+# Group collabborations: Chord Diagram
+def plot_group_chord_diagram(group_collaboration_data, author_index, output_file):
+    chord_data = []
+    for group, count in group_collaboration_data.items():
+        for i, author1 in enumerate(group):
+            for author2 in group[i + 1:]:
+                chord_data.append((author1, author2, count))
+    
+    chord_diagram = hv.Chord(chord_data).opts(
+        opts.Chord(labels='index', cmap='Category20', edge_cmap='viridis',
+                   edge_color=dim('value'), node_size=10, height=600, width=600)
+    )
+    hv.save(chord_diagram, output_file, fmt='html')
+
+# Group collabborations: Stacked Bar Chart, Group Size vs. Year
+def plot_group_size_by_year(group_collaboration_data, output_file):
+    rows = []
+    for group, count in group_collaboration_data.items():
+        group_size = len(group)
+        year = group[-1]['year']  # Assuming year metadata is in the group
+        rows.append({'Year': year, 'Group Size': group_size, 'Count': count})
+    df = pd.DataFrame(rows)
+
+    pivot_df = df.pivot_table(index='Year', columns='Group Size', values='Count', aggfunc='sum', fill_value=0)
+
+    pivot_df.plot(kind='bar', stacked=True, figsize=(10, 6), cmap='viridis')
+    plt.xlabel("Year")
+    plt.ylabel("Number of Collaborations")
+    plt.title("Group Size by Year")
+    plt.tight_layout()
+    plt.savefig(output_file)
+    plt.close()
+
+# Group collabborations: Heatmap, Group Members vs. Group Size
+def plot_author_group_heatmap(group_collaboration_data, authors, output_file):
+    author_group_counts = {author: {size: 0 for size in range(2, 6)} for author in authors}
+    for group, count in group_collaboration_data.items():
+        size = len(group)
+        for author in group:
+            author_group_counts[author][size] += count
+
+    heatmap_df = pd.DataFrame(author_group_counts).T
+    heatmap_df = heatmap_df.fillna(0)
+
+    plt.figure(figsize=(12, 8))
+    sns.heatmap(heatmap_df, cmap="YlGnBu", annot=True, fmt="d")
+    plt.xlabel("Group Size")
+    plt.ylabel("Author")
+    plt.title("Author Participation by Group Size")
+    plt.tight_layout()
+    plt.savefig(output_file)
+    plt.close()
+
+# Group collabborations: Interactive Network Graph
+def plot_interactive_author_network(group_collaboration_data, authors, output_file):
+    G = nx.Graph()
+    for group, count in group_collaboration_data.items():
+        for i, author1 in enumerate(group):
+            for author2 in group[i + 1:]:
+                if G.has_edge(author1, author2):
+                    G[author1][author2]['weight'] += count
+                else:
+                    G.add_edge(author1, author2, weight=count)
+    
+    pos = nx.spring_layout(G)
+    edge_x, edge_y, edge_width = [], [], []
+    for edge in G.edges(data=True):
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x.append(x0)
+        edge_x.append(x1)
+        edge_x.append(None)
+        edge_y.append(y0)
+        edge_y.append(y1)
+        edge_y.append(None)
+        edge_width.append(edge[2]['weight'])
+
+    edge_trace = go.Scatter(x=edge_x, y=edge_y, line=dict(width=edge_width, color='Gray'), hoverinfo='none', mode='lines')
+    node_trace = go.Scatter(x=[pos[n][0] for n in G.nodes], y=[pos[n][1] for n in G.nodes],
+                             mode='markers+text', text=list(G.nodes),
+                             marker=dict(size=10, color='LightBlue'))
+
+    fig = go.Figure(data=[edge_trace, node_trace])
+    fig.write_html(output_file)
+
+####################################################################################################
+#                                   MAIN FUNCTION                                                  #
+####################################################################################################
+
 # Main function
 def main():
     args = parse_arguments()
 
+    # Get today's date
+    today = datetime.now().strftime('%Y%m%d')
+
     # Make sure the results directory exists
     results_dir = "results"
     os.makedirs(results_dir, exist_ok=True)
-
-    # Get today's date
-    today = datetime.now().strftime('%Y%m%d')
 
     # File base naming convention
     base_name = args.output_file if args.output_file else "CDL_UMCU_Publications"
@@ -1375,65 +1931,91 @@ def main():
     # Set up logging
     logger = setup_logger(results_dir, output_base_name, args.verbose, args.debug)
 
+    # Ensure all required packages are installed
+    for package in ['Bio', 'docx', 'matplotlib', 'numpy', 'pandas', 'seaborn', 'networkx', 'holoviews']:
+        check_install_package(package, logger)
+
     # Set year range if provided
     start_year, end_year = None, None
     if args.year:
         start_year, end_year = parse_year_range(args.year)
 
-    # Ensure all required packages are installed
-    for package in ['Bio', 'docx', 'matplotlib', 'numpy', 'pandas']:
-        check_install_package(package, logger)
-
-    # Set the email for Entrez
-    Entrez.email = args.email
+    # Check if email or year is provided when using dummy data
+    if args.dummy and (args.email or args.year):
+        logger.warning("The --dummy flag is set; ignoring --email and --year arguments.")
 
     # Print some information
     logger.info(f"Running {VERSION_NAME} v{VERSION} ({VERSION_DATE})\n")
-    logger.info(f"Settings:")
-    logger.info(f"> Search parameters given:")
-    logger.info(f"  - authors: {args.names}")
-    logger.info(f"  - department(s): {args.departments}")
-    logger.info(f"  - organization: ['{args.organization}']")
-    logger.info(f"  - filtering by year (range) [{args.year}]" if args.year else "  - no year filter used.")
-    logger.info(f"  - output file(s): [{output_base_name}]")
-    logger.info(f"> PubMed email used: {args.email}. Note that this is only used by PubMed to log the queries, it is not used for the actual query.")
-    logger.info(f"> Debug mode: {'On' if args.debug else 'Off'}.")
-    logger.info(f"> Verbose mode: {'On' if args.verbose else 'Off'}.\n")
-    
-    author_data = {}
-    logger.info(f"Querying PubMed for publications and preprints.\n")
 
-    # Collect all PubMed IDs for the given author(s)
-    for main_author in args.names:
-        all_pubmed_ids = set()  # Use a set to collect unique IDs
-        # Retrieve the canonical author and their aliases
-        canonical_author = get_canonical_author(main_author, logger)
-        canonical_author_aliases = ALIAS_MAPPING.get(canonical_author, [canonical_author])
+    # # Generate or fetch data
+    if args.dummy:
+        logger.info("*** Using dummy data for testing. ***\n")
+        author_data = generate_dummy_data()
+        logger.info(f"Generated dummy data for {len(author_data)} authors.")
+        for author, (publications, preprints, *_) in author_data.items():
+            logger.info(f"> {author}: {len(publications)} publications, {len(preprints)} preprints.")
+    else:
+        # Set the email for Entrez
+        Entrez.email = args.email
 
-        # Construct the author query based on whether it's an ORCID
-        author_query = " OR ".join(
-            f'({alias}[Author - Identifier])' if re.match(r"^\d{4}-\d{4}-\d{4}-\d{4}$", alias)
-            else f'({alias}[Author])'
-            for alias in canonical_author_aliases
-        )
+        # Print some information
+        logger.info(f"Settings:")
+        logger.info(f"> Search parameters given:")
+        logger.info(f"  - authors: {args.names}")
+        logger.info(f"  - department(s): {args.departments}" if not args.ignore_departments else "  - no department filter used.")
+        logger.info(f"  - organization: {args.organization}")
+        logger.info(f"  - filtering by year (range) [{args.year}]" if args.year else "  - no year filter used.")
+        logger.info(f"  - output file(s): [{output_base_name}]")
+        logger.info(f"> PubMed email used: {args.email}. Note that this is only used by PubMed to log the queries, it is not used for the actual query.")
+        logger.info(f"> Debug mode: {'On' if args.debug else 'Off'}.")
+        logger.info(f"> Verbose mode: {'On' if args.verbose else 'Off'}.\n")
+        
 
-        logger.debug(f"Searching PubMed for canonical author '{canonical_author}' with aliases: {canonical_author_aliases}.")
+        # Collect all PubMed IDs for the given author(s)
+        logger.info(f"Querying PubMed for publications and preprints.\n")
+        author_data = {}
+        for main_author in args.names:
+            all_pubmed_ids = set()  # Use a set to collect unique IDs
+            # Retrieve the canonical author and their aliases
+            canonical_author = get_canonical_author(main_author, logger)
+            canonical_author_aliases = ALIAS_MAPPING.get(canonical_author, [canonical_author])
 
-        for department in args.departments:
-            # Retrieve department aliases
-            department_aliases = DEPARTMENT_ALIAS_MAPPING.get(department, [department])
-            department_query = " OR ".join(f'({alias}[Affiliation])' for alias in department_aliases)
+            # Construct the author query based on whether it's an ORCID
+            author_query = " OR ".join(
+                f'({alias}[Author - Identifier])' if re.match(r"^\d{4}-\d{4}-\d{4}-\d{4}$", alias)
+                else f'({alias}[Author])'
+                for alias in canonical_author_aliases
+            )
 
-            logger.debug(f"> Using department '{department}' with aliases: {department_aliases}.")
+            logger.debug(f"Searching PubMed for canonical author '{canonical_author}' with aliases: {canonical_author_aliases}.")
 
-            # Retrieve organization aliases
-            organization_aliases = ORGANIZATION_ALIAS_MAPPING.get(args.organization, [args.organization])
-            organization_query = " OR ".join(f'({alias})' for alias in organization_aliases)
+            # Department queries
+            department_query = ""
+            if not args.ignore_departments:
+                department_queries = []
+                for department in args.departments:
+                    department_aliases = DEPARTMENT_ALIAS_MAPPING.get(department, [department])
+                    department_queries.append(" OR ".join(f'({alias}[Affiliation])' for alias in department_aliases))
+                department_query = " OR ".join(f"({query})" for query in department_queries)
 
-            logger.debug(f"> Using organization '{args.organization}' with aliases: {organization_aliases}.")
+                logger.debug(f"> Combined department query: {department_query}")
+
+            # Build organization queries
+            organization_queries = []
+            for organization in args.organization:
+                organization_aliases = ORGANIZATION_ALIAS_MAPPING.get(organization, [organization])
+                organization_queries.append(" OR ".join(f'({alias}[Affiliation])' for alias in organization_aliases))
+
+            # Combine organization queries
+            organization_query = " OR ".join(f"({query})" for query in organization_queries)
+            logger.debug(f"> Combined organization query: {organization_query}")
+
 
             # Construct the full search query
-            search_query = f"(({author_query}) AND ({department_query})) AND ({organization_query})"
+            if args.ignore_departments:
+                search_query = f"(({author_query}) AND ({organization_query}))"
+            else:
+                search_query = f"(({author_query}) AND ({department_query})) AND ({organization_query})"
             logger.debug(f"Constructed PubMed search query: {search_query}")
 
             try:
@@ -1443,10 +2025,109 @@ def main():
                     continue
 
                 all_pubmed_ids.update(record["IdList"])  # Add unique PubMed IDs to the set
+            # Create exception when no publications are found for the author
             except Exception as e:
-                logger.error(f"Failed to fetch PubMed IDs for query [{search_query}]: {e}")
+                logger.error(f"Error querying PubMed for author '{canonical_author}' [search query: {search_query}]: {e}")
+                logger.info(f"Skipping author '{canonical_author}'.")
+                continue  # Ensure the loop continues for the next author
+            
+            # Validate the results to ensure all criteria are met 
+            # See below the whole script for the function validate_results
+
+            # Log the number of unique IDs for this author
+            logger.info(f"Found {len(all_pubmed_ids)} unique publications for author '{canonical_author}'.")
+
+            # Fetch detailed publication data for the current author
+            publications, preprints = fetch_publication_details(
+                sorted(all_pubmed_ids), logger, canonical_author, start_year, end_year
+            )
+            author_count, year_count, author_year_count, year_journal_count, pub_type_count = analyze_publications(
+                publications, canonical_author, logger
+            )
+            author_data[canonical_author] = (publications, preprints, author_count, year_count, author_year_count, year_journal_count, pub_type_count)
+
+            logger.info(f"Parsed {len(publications)} publications and {len(preprints)} preprints for [{canonical_author}].\n")
+
+    # Summarizing and saving results
+    logger.info(f"Done. Summarizing and saving results.\n")
+    logger.info(f"Saving plots to [{results_dir}].")
+    plot_results(author_data, results_dir, logger, output_base_name)
+
+    # Process collaboration data
+    logger.info(f"Processing collaboration data.")
+    logger.debug(f"Author data: {list(author_data.items())[:5]}")  # Debug first 5 rows from author_data
+
+    # Get collaboration data, group collaboration data, and details
+    collaboration_data, group_collaboration_data, collaboration_matrix, authors = process_collaborations(author_data, logger, ALIAS_MAPPING, results_dir, output_base_name, Entrez.email, max_group_size=5)
+    
+    # Create collaboration visualizations if data is available
+    if not collaboration_data:
+        logger.warning("No collaboration data available; skipping collaboration visualizations.")
+    else:
+        logger.info(f"Found {len(collaboration_data)} unique collaborations.")
+        # count unique collaborations
+        logger.info("Found {} unique collaborations.".format(len(collaboration_data)))
+        logger.debug(f"Collaboration data: {collaboration_data[:5]}")  # Debug first 5 collaborations
+        logger.debug(f"Authors: {authors}")
+        if args.debug:
+            # save collaboration data as python objects
+            logger.debug(f"Saving collaboration data for debug purposes.")
+            collaboration_data_path = os.path.join(results_dir, f"{output_base_name}_collaboration_data.pkl")
+            group_collaboration_data_path = os.path.join(results_dir, f"{output_base_name}_group_collaboration_data.pkl")
+            collaboration_matrix_path = os.path.join(results_dir, f"{output_base_name}_collaboration_matrix.pkl")
+            authors_path = os.path.join(results_dir, f"{output_base_name}_authors.pkl")
+            with open(collaboration_data_path, "wb") as f:
+                pickle.dump(collaboration_data, f)
+            with open(group_collaboration_data_path, "wb") as f:
+                pickle.dump(group_collaboration_data, f)
+            with open(collaboration_matrix_path, "wb") as f:
+                pickle.dump(collaboration_matrix, f)
+            with open(authors_path, "wb") as f:
+                pickle.dump(authors, f)
+
+        # Generate visualizations for pairwise collaborations
+        logger.info(f"Generating pairwise collaboration visualizations.\n")
+        create_network_graph(collaboration_data, results_dir, f"{output_base_name}_author_collaboration_network.png")
+        create_bar_plot(collaboration_data, results_dir, f"{output_base_name}_top_collaborations_barplot.png")
+        create_chord_diagram(collaboration_data, results_dir, f"{output_base_name}_author_collaboration_chord.png")
+    
+        # Generate collaboration matrix visualizations
+        if collaboration_matrix is None or collaboration_matrix.size == 0:
+            logger.warning("Collaboration matrix is empty; skipping visualizations.")
+        else: 
+            logger.info(f"Collaboration matrix was created. Generating associated visualizations.")
+            logger.debug(f"Collaboration matrix shape: {collaboration_matrix.shape}")
+            create_heatmap(collaboration_matrix, authors, results_dir, f"{output_base_name}_author_collaboration_heatmap.png")
+            create_matrix_diagram(collaboration_matrix, authors, results_dir, f"{output_base_name}_author_collaboration_matrix.png")
+    
+    # Generate group collaboration visualizations
+    if group_collaboration_data is None or len(group_collaboration_data) == 0:
+        logger.warning("Group collaboration data is empty; skipping group collaboration visualizations.")
+    else:
+        logger.info(f"Group collaboration data was created. Generating visualizations.")
+        create_collaboration_visualizations(group_collaboration_data, authors, results_dir, output_base_name, logger)
         
-        # Validate the results to ensure all criteria are met 
+    # Save results to Word and Excel
+    write_to_word(author_data, output_base_name, results_dir, logger, args)
+    write_to_excel(author_data, output_base_name, results_dir, logger)
+
+    logger.info(f"Saved the following results:")
+    logger.info(f"> Data summarized and saved to {os.path.join(results_dir, f'{output_base_name}.docx')}.")
+    logger.info(f"> Excel concatenated and saved to {os.path.join(results_dir, f'{output_base_name}.xlsx')}.")
+    
+    logger.info(f"> Plots saved to {results_dir}/.")
+    logger.info(f"> Log file saved to {os.path.join(results_dir, f'{output_base_name}.log')}.\n")
+    logger.info(f"Thank you for using {VERSION_NAME} v{VERSION} ({VERSION_DATE}).")
+    logger.info(f"{COPYRIGHT}")
+    logger.info(f"Script completed successfully on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.")
+
+if __name__ == "__main__":
+    main()
+
+####################################################################################################
+#                                   VALIDATE RESULTS                                               #
+################################################################################################
+# Validate the results to ensure all criteria are met should be pasted in the main function
         # INFORMATION -- this is not fully implemented yet, because the validation yields very low results
         # for now, we will skip this step when processing all_pubmed_ids, 
         # logger.info(f"Validating {len(all_pubmed_ids)} unique publications for [{canonical_author}].")
@@ -1461,38 +2142,3 @@ def main():
         #     organization_aliases=validation_organization_aliases
         # )
         # logger.info(f"Validated PubMed IDs: {len(validated_pubmed_ids)} unique publications remain after validation.")
-
-        # Log the number of unique IDs for this author
-        logger.info(f"Found {len(all_pubmed_ids)} unique publications for author '{canonical_author}'.")
-
-        # Fetch detailed publication data for the current author
-        publications, preprints = fetch_publication_details(
-            sorted(all_pubmed_ids), logger, canonical_author, start_year, end_year
-        )
-        author_count, year_count, author_year_count, year_journal_count, pub_type_count = analyze_publications(
-            publications, canonical_author, logger
-        )
-        author_data[canonical_author] = (publications, preprints, author_count, year_count, author_year_count, year_journal_count, pub_type_count)
-
-        logger.info(f"Found {len(publications)} publications and {len(preprints)} preprints for [{canonical_author}].\n")
-
-    # Summarizing and saving results
-    logger.info(f"Done. Summarizing and saving results.\n")
-    logger.info(f"Saving plots to [{results_dir}].")
-    plot_results(author_data, results_dir, logger, output_base_name)
-
-    # Save results to Word and Excel
-    write_to_word(author_data, output_base_name, results_dir, logger, args)
-    write_to_excel(author_data, output_base_name, results_dir, logger)
-
-    logger.info(f"Saved the following results:")
-    logger.info(f"> Data summarized and saved to {os.path.join(results_dir, f'{output_base_name}.docx')}.")
-    logger.info(f"> Excel concatenated and saved to {os.path.join(results_dir, f'{output_base_name}.xlsx')}.")
-    logger.info(f"> Plots saved to {results_dir}/.")
-    logger.info(f"> Log file saved to {os.path.join(results_dir, f'{output_base_name}.log')}.\n")
-    logger.info(f"Thank you for using {VERSION_NAME} v{VERSION} ({VERSION_DATE}).")
-    logger.info(f"{COPYRIGHT}")
-    logger.info(f"Script completed successfully on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.")
-
-if __name__ == "__main__":
-    main()
