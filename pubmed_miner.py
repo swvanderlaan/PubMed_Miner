@@ -36,6 +36,7 @@ import numpy as np
 import pandas as pd
 
 # Change log:
+# * v1.2.1beta, 2025-01-07: Added additional default names.
 # * v1.2.0beta, 2024-11-20: Added collection of pairwise and group collaborations for the found publications. Added new visualizations for collaboration. Added possibility to add more than one organization to search for. Clarified help for arguments. Re-organized the script and added annotations.
 # * v1.1.1, 2024-11-19: Improved Word-docx output. Changed logger-output to be less verbose and move things to the --debug. Clarified logger output further. 
 # * v1.1.0, 2024-11-18: Fixed an issue where not all the aliases for --names, --departments and --organization were properly queried in conjunction with --organization. Added an option to include ORCID in the author alias list. Fixed issue where the moving average plot might not handle edge years (with fewer than moving_avg_window data points) gracefully.
@@ -53,8 +54,8 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.2.0beta'
-VERSION_DATE = '2024-11-20'
+VERSION = '1.2.1beta'
+VERSION_DATE = '2025-01-07'
 COPYRIGHT_AUTHOR = 'Sander W. van der Laan'
 COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
@@ -143,6 +144,134 @@ ALIAS_MAPPING = {
         "Vader Pieter"
         # Add other aliases as needed
     ],
+    "van Wijk R": [
+        "van Wijk R",
+        "van Wijk HA", 
+        "Richard van Wijk",
+        "van Wijk Richard",
+        # Add other aliases as needed
+    ],
+    "ten Berg M": [
+        "ten Berg M",
+        "ten Berg MJ",
+        "ten Berg MJ ten",
+        "Maarten J ten Berg",
+        "ten Berg Maarten",
+        "Maarten ten Berg",
+        # Add other aliases as needed
+    ],
+    "de Vooght KMK": [
+        "de Vooght KMK",
+        "de Vooght K",
+        "Karen M.K. de Vooght",
+        "de Vooght Karen",
+        "Karen de Vooght",
+        # Add other aliases as needed
+    ],
+    "Kemperman JTJH": [
+        "Kemperman JTJH",
+        "Kemperman J",
+        "Hans T.J.H. Kemperman",
+        "Kemperman Hans",
+        "Hans Kemperman",
+        # Add other aliases as needed
+    ],
+    "Huisman A": [
+        "Huisman A",
+        "Albert Huisman",
+        "Huisman Albert",
+        # Add other aliases as needed
+    ],
+    "Musson REA": [
+        "Musson REA",
+        "Musson R",
+        "Ruben E.A. Musson",
+        "Musson Ruben",
+        "Ruben Musson",
+        # Add other aliases as needed
+    ],
+    "Hutten TJA": [
+        "Hutten TJA",
+        "Hutten T",
+        "Tim J.A. Hutten",
+        "Hutten Tim",
+        "Tim Hutten",
+        # Add other aliases as needed
+    ],
+    "Fliervoet LAL": [
+        "Fliervoet LAL",
+        "Fliervoet L",
+        "Lies A.L. Fliervoet",
+        "Fliervoet Lies",
+        "Lies Fliervoet",
+        # Add other aliases as needed
+    ],
+    "Hamann D": [
+        "Hamann D",
+        "Dorte Hamann",
+        "Hamann Dorte",
+        # Add other aliases as needed
+    ],
+    "Geneugelijk CCA": [
+        "Geneugelijk CCA",
+        "Geneugelijk C",
+        "Kirsten C.C.A. Geneugelijk",
+        "Geneugelijk Kirsten",
+        "Kirsten Geneugelijk",
+        # Add other aliases as needed
+    ],
+    "Nierkens S": [
+        "Nierkens S",
+        "Stefan Nierkens",
+        "Nierkens Stefan",
+        # Add other aliases as needed
+    ],
+    "Spierings HT": [
+        "Spierings HT",
+        "Eric Spierings",
+        "Spierings Eric",
+        # Add other aliases as needed
+    ],
+    "Corput CJ": [
+        "Corput CJ",
+        "Lisette Corput",
+        "Corput Lisette",
+        # Add other aliases as needed
+    ],
+    "Zuidhof HR": [
+        "Zuidhof HR",
+        "Hidde Zuidhof",
+        "Zuidhof Hidde",
+        # Add other aliases as needed
+    ],
+    "Tiel Groenestege WM": [
+        "Tiel Groenestege WM",
+        "Wouter M. Tiel Groenestege",
+        "Tiel Groenestege Wouter",
+        "Wouter Tiel Groenestege",
+        # Add other aliases as needed
+    ],
+    "Slaats-Arts JJG": [
+        "Slaats-Arts JJG",
+        "Janine JJG Slaats-Arts",
+        "Slaats-Arts Janine",
+        "Janine Slaats-Arts",
+        # Add other aliases as needed
+    ],
+    "Urbanus RT": [
+        "Urbanus RT",
+        "Rolf T Urbanus",
+        "Urbanus Rolf",
+        "Rolf Urbanus",
+        # Add other aliases as needed
+    ],
+    "Pluim CM": [
+        "Pluim CM",
+        "Cees M Pluim",
+        "Pluim Cees",
+        "Cees Pluim",
+        # Add other aliases as needed
+    ],
     # Add other aliases as needed
 }
 
@@ -209,7 +338,25 @@ DEFAULT_NAMES = ["van der Laan SW",
 "Haitjema S", 
 "den Ruijter HM", 
 "Hoefer IE",
-"Vader P"]
+"Vader P",
+"van Wijk R",
+"ten Berg M",
+"de Vooght KMK",
+"Kemperman JTJH",
+"Huisman A",
+"Musson REA",
+"Hutten TJA",
+"Fliervoet LAL",
+"Hamann D",
+"Geneugelijk CCA",
+"Nierkens S",
+"Spierings HT",
+"Corput CJ",
+"Zuidhof HR",
+"Tiel Groenestege WM",
+"Slaats-Arts JJG",
+"Urbanus RT",
+"Pluim CM"]
 # DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory"]
 DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory", "Laboratory of Experimental Cardiology"]
 DEFAULT_ORGANIZATION = ["University Medical Center Utrecht"]
