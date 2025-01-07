@@ -13,6 +13,7 @@ from collections import defaultdict
 from itertools import combinations
 from collections import Counter
 import xml.etree.ElementTree as ET
+import json
 
 # Mining PubMed
 from Bio import Entrez
@@ -31,12 +32,14 @@ from holoviews.plotting.util import dim
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 
+
 # Data manipulation
 import numpy as np
 import pandas as pd
 
 # Change log:
-# * v1.2.1beta, 2025-01-07: Added additional default names.
+# * v1.2.1beta, 2025-01-07: Fix the color palette generation to avoid duplicate colors and make sure each author has a unique color. 
+# * v1.2.1beta, 2025-01-07: Added additional default names. Fixed issue where the Word-document was not produced.
 # * v1.2.0beta, 2024-11-20: Added collection of pairwise and group collaborations for the found publications. Added new visualizations for collaboration. Added possibility to add more than one organization to search for. Clarified help for arguments. Re-organized the script and added annotations.
 # * v1.1.1, 2024-11-19: Improved Word-docx output. Changed logger-output to be less verbose and move things to the --debug. Clarified logger output further. 
 # * v1.1.0, 2024-11-18: Fixed an issue where not all the aliases for --names, --departments and --organization were properly queried in conjunction with --organization. Added an option to include ORCID in the author alias list. Fixed issue where the moving average plot might not handle edge years (with fewer than moving_avg_window data points) gracefully.
@@ -54,10 +57,10 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.2.1beta'
+VERSION = '1.2.2beta'
 VERSION_DATE = '2025-01-07'
 COPYRIGHT_AUTHOR = 'Sander W. van der Laan'
-COPYRIGHT = 'Copyright 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
+COPYRIGHT = 'Copyright 1979-2025. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
 Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International Public License
 
@@ -265,13 +268,6 @@ ALIAS_MAPPING = {
         "Rolf Urbanus",
         # Add other aliases as needed
     ],
-    "Pluim CM": [
-        "Pluim CM",
-        "Cees M Pluim",
-        "Pluim Cees",
-        "Cees Pluim",
-        # Add other aliases as needed
-    ],
     # Add other aliases as needed
 }
 
@@ -355,10 +351,9 @@ DEFAULT_NAMES = ["van der Laan SW",
 "Zuidhof HR",
 "Tiel Groenestege WM",
 "Slaats-Arts JJG",
-"Urbanus RT",
-"Pluim CM"]
-# DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory"]
-DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory", "Laboratory of Experimental Cardiology"]
+"Urbanus RT"]
+DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory"]
+# DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory", "Laboratory of Experimental Cardiology"]
 DEFAULT_ORGANIZATION = ["University Medical Center Utrecht"]
 
 ####################################################################################################
@@ -419,6 +414,43 @@ def parse_year_range(year_range_str):
         start_year = end_year = int(year_range_str)
     return start_year, end_year
 
+# Function to generate a color palette with at least 36 fresh, distinctive colors
+def generate_unique_colors(n=36):
+    # Use 'tab20' and 'Set3' colormaps to create a distinctive palette
+    cmap1 = plt.cm.get_cmap('tab20', n // 2)
+    cmap2 = plt.cm.get_cmap('Set3', n - (n // 2))
+    colors = [cmap1(i) for i in range(cmap1.N)] + [cmap2(i) for i in range(cmap2.N)]
+    return colors[:n]
+
+# Assign unique colors to authors
+def assign_colors_to_authors(authors, color_map_path="author_color_map.json"):
+    # Load existing color map if it exists
+    if os.path.exists(color_map_path):
+        with open(color_map_path, "r") as f:
+            author_color_map = json.load(f)
+    else:
+        author_color_map = {}
+
+    # Generate a unique palette for new authors
+    current_colors = set(author_color_map.values())
+    unique_colors = generate_unique_colors(len(authors) + len(current_colors))
+
+    # Assign colors to new authors
+    for author in authors:
+        if author not in author_color_map:
+            # Assign the next available unique color
+            available_colors = [color for color in unique_colors if color not in current_colors]
+            if not available_colors:
+                raise ValueError("Ran out of unique colors. Extend the palette!")
+            author_color_map[author] = available_colors.pop(0)
+            current_colors.add(author_color_map[author])
+
+    # Save the updated color map
+    with open(color_map_path, "w") as f:
+        json.dump(author_color_map, f)
+
+    return author_color_map
+
 # Parse command-line arguments
 def parse_arguments():
     """
@@ -450,8 +482,21 @@ Optional arguments:
     -d, --debug                  Enable debug output.
     -V, --version                Show program's version number and exit.
 
-Example:
+Example #1:
     python pubmed_miner.py --email <email-address> --year 2017-2024 --verbose
+
+Example #1 -- produces results for all authors in the DEFAULT_NAMES list across all departments and all years
+    python pubmed_miner.py --email <email-address>
+
+Example #2 -- produces results for all authors in the DEFAULT_NAMES list across all departments for the year 2023
+    python pubmed_miner.py --email <email-address> --year 2023
+
+Example #3 -- produces results for all authors in the DEFAULT_NAMES list across all departments for the years 2023-2024
+    python pubmed_miner.py --email <email-address> --year 2023-2024
+
+Example #4 -- produces results for a given author from a given department for the year 2023
+    python pubmed_miner.py --email <email-address> --year 2023 --names "last_name IN" --departments "Department Name"
+
 + {VERSION_NAME} v{VERSION}. {COPYRIGHT} +
 {COPYRIGHT_TEXT}""",
         formatter_class=argparse.RawTextHelpFormatter)
@@ -2072,9 +2117,11 @@ def main():
         logger.info(f"> Debug mode: {'On' if args.debug else 'Off'}.")
         logger.info(f"> Verbose mode: {'On' if args.verbose else 'Off'}.\n")
         
-
         # Collect all PubMed IDs for the given author(s)
         logger.info(f"Querying PubMed for publications and preprints.\n")
+        # Assign unique colors to authors and save the mapping
+        author_color_map = assign_colors_to_authors(authors)
+
         author_data = {}
         for main_author in args.names:
             all_pubmed_ids = set()  # Use a set to collect unique IDs
@@ -2162,14 +2209,12 @@ def main():
     # Get collaboration data, group collaboration data, and details
     collaboration_data, group_collaboration_data, collaboration_matrix, authors = process_collaborations(author_data, logger, ALIAS_MAPPING, results_dir, output_base_name, Entrez.email, max_group_size=5)
     
-    # Check validity of collaboration data
+    # Create collaboration visualizations if data is available
     if not collaboration_data or not all(len(row) == 3 for row in collaboration_data):
         logger.error("Invalid collaboration data. Ensure it's a list of (author1, author2, num_collaborations) tuples.")
-    return
-
-    # Create collaboration visualizations if data is available
-    if not collaboration_data:
-        logger.warning("No collaboration data available; skipping collaboration visualizations.")
+        logger.debug(f"Collaboration data: {collaboration_data}")
+        logger.debug(f"Validation result: {all(len(row) == 3 for row in collaboration_data)}")
+        logger.warning("Skipping collaboration visualizations due to invalid data.")
     else:
         logger.info(f"Found {len(collaboration_data)} unique collaborations.")
         # count unique collaborations
@@ -2215,6 +2260,7 @@ def main():
         create_collaboration_visualizations(group_collaboration_data, authors, results_dir, output_base_name, logger)
         
     # Save results to Word and Excel
+    logger.info(f"Saving results to Word and Excel.")
     write_to_word(author_data, output_base_name, results_dir, logger, args)
     write_to_excel(author_data, output_base_name, results_dir, logger)
 

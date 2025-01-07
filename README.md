@@ -173,7 +173,7 @@ You can use the [GitHub issue tracker](https://github.com/swvanderlaan/PubMed_Mi
 
 
 ## Acknowledgements
-Dr. Sander W. van der Laan is funded through EU H2020 TO_AITION (grant number: 848146), EU HORIZON NextGen (grant number: 101136962), EU HORIZON MIRACLE (grant number: 101115381), and Health~Holland PPP Allowance ‘Getting the Perfect Image’.
+Dr. Sander W. van der Laan is funded through EU H2020 TO_AITION (grant number: 848146), EU HORIZON NextGen (grant number: 101136962), EU HORIZON MIRACLE (grant number: 101115381), Health~Holland PPP Allowance ‘Getting the Perfect Image’, and a U01 grant from the NIDDKD.
 
 We are thankful for the support of the Leducq Fondation ‘PlaqOmics’ and ‘AtheroGen’, and the Chan Zuckerberg Initiative ‘MetaPlaq’. The research for this contribution was made possible by the AI for Health working group of the [EWUU alliance](https://aiforhealth.ewuu.nl/). The collaborative project ‘Getting the Perfect Image’ was co-financed through use of PPP Allowance awarded by Health~Holland, Top Sector Life Sciences & Health, to stimulate public-private partnerships.
 
@@ -182,16 +182,16 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 
 #### Changes log
     
-    _Version:_      v1.2.0beta</br>
-    _Last update:_  2024-11-20</br>
+    _Version:_      v1.2.1beta</br>
+    _Last update:_  2025-01-07</br>
     _Written by:_   Sander W. van der Laan (s.w.vanderlaan [at] gmail [dot] com).
     
     **MoSCoW To-Do List**
     The things we Must, Should, Could, and Would have given the time we have.
     _M_
-    [] Add new visualizations for collaboration.
-    [] Add collection of pairwise collaborations. 
-    [] Add collection of group collaborations.
+    [x] Add new visualizations for collaboration.
+    [x] Add collection of pairwise collaborations. 
+    [x] Add collection of group collaborations.
     [x] Add possibility to add more than one organization to search for.
     [x] Clarify help for arguments.
     [x] Re-organize the script and add annotations.
@@ -202,6 +202,7 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
     _W_
 
     **Changes log**
+    * v1.2.1beta, 2025-01-07: Added additional default names. Fixed issue where the Word-document was not produced.
     * v1.2.0beta, 2024-11-20: Added collection of pairwise and group collaborations for the found publications. Added new visualizations for collaboration. Added possibility to add more than one organization to search for. Clarified help for arguments. Re-organized the script and added annotations.
     * v1.1.1, 2024-11-19: Improved Word-docx output. Changed logger-output to be less verbose and move things to the --debug. Clarified logger output further. 
     * v1.1.0, 2024-11-18: Fixed an issue where not all the aliases for --names, --departments and --organization were properly queried in conjunction with --organization. Added an option to include ORCID in the author alias list. Fixed issue where the moving average plot might not handle edge years (with fewer than moving_avg_window data points) gracefully.
@@ -221,4 +222,4 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 --------------
 
 #### [![License: CC BY-NC-ND 4.0](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
-##### Copyright (c) 1979-2024. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.
+##### Copyright (c) 1979-2025. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.
