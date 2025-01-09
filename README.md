@@ -182,26 +182,24 @@ Dr. Sander W. van der Laan has received Roche funding for unrelated work.
 
 #### Changes log
     
-    _Version:_      v1.2.1beta</br>
-    _Last update:_  2025-01-07</br>
+    _Version:_      v1.2.3beta</br>
+    _Last update:_  2025-01-09</br>
     _Written by:_   Sander W. van der Laan (s.w.vanderlaan [at] gmail [dot] com).
     
     **MoSCoW To-Do List**
     The things we Must, Should, Could, and Would have given the time we have.
     _M_
-    [x] Add new visualizations for collaboration.
-    [x] Add collection of pairwise collaborations. 
-    [x] Add collection of group collaborations.
-    [x] Add possibility to add more than one organization to search for.
-    [x] Clarify help for arguments.
-    [x] Re-organize the script and add annotations.
+    
     _S_
-
+    [ ] Fix unique colors for authors. [Issue](https://github.com/swvanderlaan/PubMed_Miner/issues/8). 
     _C_
-
+    [ ] Add collaboration visualizations to Word-document. [Issue](https://github.com/swvanderlaan/PubMed_Miner/issues/7).
+    [ ] Add search through source. [Issue](https://github.com/swvanderlaan/PubMed_Miner/issues/6).
     _W_
 
     **Changes log**
+    * v1.2.3beta, 2025-01-09: Fixed type in CDL name.
+    * v1.2.2beta, 2025-01-07: Fixed the color palette generation to avoid duplicate colors and make sure each author has a unique color. 
     * v1.2.1beta, 2025-01-07: Added additional default names. Fixed issue where the Word-document was not produced.
     * v1.2.0beta, 2024-11-20: Added collection of pairwise and group collaborations for the found publications. Added new visualizations for collaboration. Added possibility to add more than one organization to search for. Clarified help for arguments. Re-organized the script and added annotations.
     * v1.1.1, 2024-11-19: Improved Word-docx output. Changed logger-output to be less verbose and move things to the --debug. Clarified logger output further. 

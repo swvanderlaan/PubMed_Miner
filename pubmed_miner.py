@@ -38,7 +38,8 @@ import numpy as np
 import pandas as pd
 
 # Change log:
-# * v1.2.1beta, 2025-01-07: Fix the color palette generation to avoid duplicate colors and make sure each author has a unique color. 
+# * v1.2.3beta, 2025-01-09: Fixed type in CDL name.
+# * v1.2.2beta, 2025-01-07: Fixed the color palette generation to avoid duplicate colors and make sure each author has a unique color. 
 # * v1.2.1beta, 2025-01-07: Added additional default names. Fixed issue where the Word-document was not produced.
 # * v1.2.0beta, 2024-11-20: Added collection of pairwise and group collaborations for the found publications. Added new visualizations for collaboration. Added possibility to add more than one organization to search for. Clarified help for arguments. Re-organized the script and added annotations.
 # * v1.1.1, 2024-11-19: Improved Word-docx output. Changed logger-output to be less verbose and move things to the --debug. Clarified logger output further. 
@@ -57,8 +58,8 @@ import pandas as pd
 
 # Version and License Information
 VERSION_NAME = 'PubMed Miner'
-VERSION = '1.2.2beta'
-VERSION_DATE = '2025-01-07'
+VERSION = '1.2.3beta'
+VERSION_DATE = '2025-01-09'
 COPYRIGHT_AUTHOR = 'Sander W. van der Laan'
 COPYRIGHT = 'Copyright 1979-2025. Sander W. van der Laan | s.w.vanderlaan [at] gmail [dot] com | https://vanderlaanand.science.'
 COPYRIGHT_TEXT = '''
@@ -273,11 +274,11 @@ ALIAS_MAPPING = {
 
 # Departement mapping for handling multiple department names
 DEPARTMENT_ALIAS_MAPPING = {
-    "Central Diagnostics Laboratory": [
-        "Central Diagnostics Laboratory",
+    "Central Diagnostic Laboratory": [
+        "Central Diagnostic Laboratory",
         "CDL",
         "CDL Research",
-        "Central Diagnostic Laboratory",
+        "Central Diagnostics Laboratory",
         "Central Diagnostic Laboratory Research",
         "Central Diagnostics Laboratory Research",
         "Central Diagnostic Laboratory, Division Laboratories, Pharmacy, and Biomedical genetics",
@@ -352,7 +353,7 @@ DEFAULT_NAMES = ["van der Laan SW",
 "Tiel Groenestege WM",
 "Slaats-Arts JJG",
 "Urbanus RT"]
-DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory"]
+DEFAULT_DEPARTMENTS = ["Central Diagnostic Laboratory"]
 # DEFAULT_DEPARTMENTS = ["Central Diagnostics Laboratory", "Laboratory of Experimental Cardiology"]
 DEFAULT_ORGANIZATION = ["University Medical Center Utrecht"]
 
