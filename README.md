@@ -1,6 +1,6 @@
 # [PubMed Miner](https://github.com/swvanderlaan/PubMed_Miner) <img align="right" height="200" src=images/FullLogo_Transparent.png>
 
-[![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/downloads/release/python-390/)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/downloads/release/python-390/) [![DOI](https://zenodo.org/badge/888720708.svg)](https://doi.org/10.5281/zenodo.14990033)
 
 **Pubmed Miner** _Mine PubMed for publication at the Central Diagnostics Laboratory of the Division Laboratories, Pharmacy and Biomedical genetics at the University Medical Center Utrecht, Utrecht University, Utrecht, The Netherlands._
 
